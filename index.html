@@ -478,27 +478,83 @@
 </div>
 
 <script>
-const DEFAULT_CATEGORIES = ["Alimentos", "Limpeza", "Higiene"];
+const DEFAULT_CATEGORIES = ["Alimentos", "Limpeza", "Higiene", "Utensílios e Ferramentas"];
 
 const CATEGORY_KEYWORDS = {
   "Limpeza": [
-    "papel higiênico", "papel higienico", "cif", "amaciante",
-    "desodorizador de ambiente", "odorizador",
-    "sabão", "sabao", "detergente", "água sanitária", "agua sanitaria",
-    "desinfetante", "esponja", "vassoura", "álcool", "alcool", "veja",
-    "limpador", "saco de lixo"
+    // papel e descartáveis de limpeza
+    "papel higiênico", "papel higienico", "papel toalha", "guardanapo",
+    "saco de lixo", "saco para lixo",
+    // produtos multiuso e desinfecção
+    "desinfetante", "multiuso", "álcool", "alcool", "água sanitária",
+    "agua sanitaria", "cloro", "alvejante", "cif", "veja", "limpador",
+    "removedor", "tira mancha", "tira-mancha", "lustra móveis",
+    "lustra moveis", "cera", "amaciante", "odorizador",
+    "desodorizador de ambiente", "sanitizante",
+    // sabões e detergentes
+    "sabão em pó", "sabao em po", "sabão em barra", "sabao em barra",
+    "sabão líquido", "sabao liquido", "sabão em pedra", "sabao em pedra",
+    "detergente", "sabão", "sabao", "omo", "ariel", "brilhante", "ypê", "ype", "minuano",
+    "pinho sol", "pinho-sol", "poliflor", "limpol", "qboa",
+    // utensílios de limpeza
+    "esponja de aço", "esponja de aco", "bombril", "esponja", "vassoura", "rodo", "pano de chão",
+    "pano de chao", "pano de prato", "flanela", "luva de limpeza",
+    "luva de borracha", "balde",
+    // pragas
+    "inseticida", "raid", "mata mosquito", "mata-mosquito",
+    "veneno de barata", "naftalina", "repelente de ambiente"
   ],
   "Higiene": [
-    "barbeador", "amolecedor de unhas", "esmalte", "shampoo", "condic",
-    "sabonete", "creme dental", "pasta de dente", "escova de dente",
-    "absorvente", "fio dental", "cotonete", "hidratante", "perfume",
-    "óleo capilar", "oleo capilar", "protetor solar", "desodorante"
+    // banho e corpo
+    "sabonete", "sabonete líquido", "sabonete liquido",
+    "sabonete íntimo", "sabonete intimo", "shampoo", "condic",
+    "hidratante", "hidratante corporal", "óleo capilar", "oleo capilar",
+    "talco", "perfume", "desodorante", "antitranspirante",
+    "protetor solar", "repelente corporal",
+    // cabelo
+    "escova de cabelo", "pente", "gel de cabelo", "creme para pentear",
+    // higiene bucal
+    "creme dental", "pasta de dente", "escova de dente", "fio dental",
+    "seda dental", "enxaguante bucal", "listerine",
+    // barba
+    "barbeador", "aparelho de barbear", "gilete", "lâmina de barbear",
+    "lamina de barbear", "creme de barbear", "espuma de barbear",
+    "loção pós barba", "locao pos barba",
+    // unhas e beleza
+    "amolecedor de unhas", "esmalte", "removedor de esmalte", "acetona",
+    "maquiagem", "batom", "rímel", "rimel",
+    // higiene íntima e cuidados diversos
+    "absorvente", "protetor diário", "protetor diario", "preservativo",
+    "camisinha", "fralda", "lenço umedecido", "lenco umedecido",
+    "cotonete", "algodão", "algodao"
+  ],
+  "Utensílios e Ferramentas": [
+    // ferramentas
+    "martelo", "chave de fenda", "chave philips", "chave inglesa",
+    "chave allen", "alicate", "furadeira", "parafusadeira", "parafuso",
+    "prego", "serrote", "trena", "fita métrica", "fita metrica",
+    "nível de bolha", "nivel de bolha", "lixa", "marreta", "escada",
+    "arame", "fita isolante", "cola", "cola quente", "silicone",
+    "chave de boca", "broca", "fita adesiva", "durex",
+    // utensílios de cozinha e casa
+    "panela", "frigideira", "talher", "garfo", "faca", "colher",
+    "prato", "copo", "tigela", "travessa", "escorredor", "tábua de corte",
+    "tabua de corte", "abridor de lata", "ralador", "liquidificador",
+    "panela de pressão", "panela de pressao", "forma de bolo", "jarra",
+    "bandeja", "pote plástico", "pote plastico", "pote de vidro",
+    "tupperware", "saca-rolhas", "descascador", "espremedor",
+    "batedeira", "escumadeira", "concha", "pegador de macarrão",
+    "pegador de macarrao", "tesoura de cozinha",
+    // itens gerais de casa
+    "lâmpada", "lampada", "pilha", "bateria", "extensão elétrica",
+    "extensao eletrica", "fósforo", "fosforo", "isqueiro", "vela",
+    "barbante", "corda", "adaptador de tomada", "tomada", "corrente"
   ]
 };
 
 function classifyItem(name) {
   const n = name.toLowerCase();
-  for (const cat of ["Limpeza", "Higiene"]) {
+  for (const cat of ["Limpeza", "Higiene", "Utensílios e Ferramentas"]) {
     if (categories.includes(cat) && CATEGORY_KEYWORDS[cat].some(kw => n.includes(kw))) return cat;
   }
   return categories.includes("Alimentos") ? "Alimentos" : categories[0];
@@ -555,6 +611,7 @@ const STORAGE_KEY = "lista-compras-v4";
 const OLD_STORAGE_KEY = "lista-compras-v3";
 let items = []; // { id, name, category, checked, order }
 let categories = []; // ["Alimentos", "Limpeza", ...]
+let toolsCategoryMigrated = false;
 let editingId = null;
 let editingCategory = null;
 let categoriesPanelOpen = false;
@@ -969,7 +1026,7 @@ async function deleteItem(id) {
 async function saveState() {
   const statusEl = document.getElementById('status');
   try {
-    await storageSet(STORAGE_KEY, JSON.stringify({ items, categories }));
+    await storageSet(STORAGE_KEY, JSON.stringify({ items, categories, toolsCategoryMigrated }));
   } catch (e) {
     statusEl.textContent = 'Não foi possível salvar (offline?)';
     setTimeout(() => { statusEl.textContent = ''; }, 2000);
@@ -983,6 +1040,7 @@ async function loadState() {
   const freshDefaults = () => {
     categories = DEFAULT_CATEGORIES.slice();
     items = DEFAULT_ITEMS.map(([name, category], idx) => ({ id: makeId(), name, category, checked: false, order: idx }));
+    toolsCategoryMigrated = true;
   };
 
   try {
@@ -991,6 +1049,7 @@ async function loadState() {
       const parsed = JSON.parse(result.value);
       items = Array.isArray(parsed.items) ? parsed.items : [];
       categories = Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : DEFAULT_CATEGORIES.slice();
+      toolsCategoryMigrated = !!parsed.toolsCategoryMigrated;
     } else {
       // Tenta migrar dados salvos na versão anterior (apenas itens, sem categorias customizadas)
       let migrated = false;
@@ -999,6 +1058,7 @@ async function loadState() {
         if (old && old.value) {
           items = JSON.parse(old.value);
           categories = DEFAULT_CATEGORIES.slice();
+          toolsCategoryMigrated = true;
           migrated = true;
         }
       } catch (e) { /* sem dados antigos, segue para o padrão */ }
@@ -1014,8 +1074,21 @@ async function loadState() {
     if (!categories.includes(it.category)) it.category = categories[0];
   });
 
+  // Migração pontual: adiciona a categoria de Utensílios e Ferramentas para
+  // quem já tinha uma lista salva antes dela existir (só roda uma vez)
+  let needsSave = false;
+  if (!toolsCategoryMigrated) {
+    if (!categories.includes("Utensílios e Ferramentas")) {
+      categories.push("Utensílios e Ferramentas");
+      needsSave = true;
+    }
+    toolsCategoryMigrated = true;
+    needsSave = true;
+  }
+
   statusEl.textContent = '';
   render();
+  if (needsSave) await saveState();
 }
 
 document.getElementById('resetBtn').addEventListener('click', async () => {
