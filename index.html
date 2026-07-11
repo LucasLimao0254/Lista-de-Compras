@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#14151a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Lista de Compras</title>
+<style>
+  :root {
+    --bg: #14151a;
+    --panel: #1c1e26;
+    --line: #2b2d38;
+    --text: #e9e9ee;
+    --muted: #8b8d9b;
+    --accent: #5eead4;
+    --accent-dim: rgba(94, 234, 212, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    padding: 24px 16px 60px;
+  }
+
+  .wrap {
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  header {
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+
+  .sub {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .progress-track {
+    height: 6px;
+    background: var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 14px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.35s ease;
+  }
+
+  .progress-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: 6px;
+    text-align: right;
+  }
+
+  .add-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .add-row input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    outline: none;
+  }
+
+  .add-row input:focus {
+    border-color: var(--accent);
+  }
+
+  .add-row input::placeholder {
+    color: var(--muted);
+  }
+
+  .add-row button {
+    flex: 0 0 46px;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    color: #0b0c0f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .add-row button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .add-row button:active {
+    opacity: 0.85;
+  }
+
+  .section {
+    margin-top: 22px;
+  }
+
+  .section.empty {
+    display: none;
+  }
+
+  .section-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 8px;
+    padding-left: 2px;
+  }
+
+  .section-count {
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: var(--panel);
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--line);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  li:last-child { border-bottom: none; }
+
+  .drag-handle {
+    flex: 0 0 26px;
+    width: 26px;
+    height: 30px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .drag-handle svg { width: 16px; height: 16px; }
+
+  .drag-handle:active { color: var(--accent); }
+
+  li.drag-placeholder {
+    background: var(--accent-dim);
+    border: 1.5px dashed var(--accent);
+    border-radius: 8px;
+    margin: 4px 6px;
+    list-style: none;
+  }
+
+  .drag-ghost {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+    opacity: 0.95;
+    transform: scale(1.02);
+  }
+
+  body.dragging-active .section.empty {
+    display: block;
+  }
+
+  body.dragging-active .section.empty ul {
+    min-height: 52px;
+  }
+
+  body.dragging-active .section ul:empty::before {
+    content: 'Solte aqui';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 52px;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .box {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 2px solid var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s ease, background 0.2s ease;
+    cursor: pointer;
+  }
+
+  .box svg {
+    width: 13px;
+    height: 13px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  li.checked .box {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  li.checked .box svg { opacity: 1; }
+
+  .item-label {
+    flex: 1;
+    font-size: 0.98rem;
+    transition: color 0.2s ease, opacity 0.2s ease;
+    cursor: pointer;
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+
+  li.checked .item-label {
+    color: var(--muted);
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+
+  .edit-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    outline: none;
+    min-width: 0;
+  }
+
+  .item-actions {
+    display: flex;
+    gap: 4px;
+    flex: 0 0 auto;
+  }
+
+  .icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .icon-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .icon-btn:active {
+    background: var(--line);
+  }
+
+  .icon-btn.edit-btn:active {
+    color: var(--accent);
+  }
+
+  .icon-btn.delete-btn:active {
+    color: #f87171;
+  }
+
+  .icon-btn.save-btn {
+    color: var(--accent);
+  }
+
+  .reset-btn {
+    margin-top: 28px;
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .reset-btn:active {
+    background: var(--panel);
+  }
+
+  .status {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin-top: 10px;
+    min-height: 16px;
+  }
+
+  .categories-toggle {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .categories-toggle svg { width: 14px; height: 14px; }
+
+  .categories-toggle:active { background: var(--panel); }
+
+  .categories-panel {
+    display: none;
+    margin-top: 10px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 6px 12px;
+  }
+
+  .categories-panel.open { display: block; }
+
+  .category-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .category-row:last-child { border-bottom: none; }
+
+  .category-name-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    outline: none;
+    min-width: 0;
+  }
+
+  .category-name-input:focus { border-color: var(--accent); }
+
+  .category-count {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .add-category-row {
+    display: flex;
+    gap: 8px;
+    padding: 10px 0 4px;
+  }
+
+  .add-category-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    outline: none;
+  }
+
+  .add-category-row input:focus { border-color: var(--accent); }
+
+  .add-category-row button {
+    flex: 0 0 40px;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: #0b0c0f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .add-category-row button svg { width: 18px; height: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Lista de Compras</h1>
+    <div class="sub">Toque para marcar o que já foi comprado</div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-label" id="progressLabel">0 de 0</div>
+  </header>
+
+  <div class="add-row">
+    <input type="text" id="newItemInput" placeholder="Adicionar item..." autocomplete="off">
+    <button id="addBtn" aria-label="Adicionar item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </button>
+  </div>
+
+  <button class="categories-toggle" id="categoriesToggle">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+    <span id="categoriesToggleLabel">Gerenciar categorias</span>
+  </button>
+
+  <div class="categories-panel" id="categoriesPanel">
+    <div id="categoriesList"></div>
+    <div class="add-category-row">
+      <input type="text" id="newCategoryInput" placeholder="Nova categoria..." autocomplete="off">
+      <button id="addCategoryBtn" aria-label="Adicionar categoria">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="sections"></div>
+
+  <button class="reset-btn" id="resetBtn">Desmarcar tudo</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const DEFAULT_CATEGORIES = ["Alimentos", "Limpeza", "Higiene"];
+
+const CATEGORY_KEYWORDS = {
+  "Limpeza": [
+    "papel higiênico", "papel higienico", "cif", "amaciante",
+    "desodorizador de ambiente", "odorizador",
+    "sabão", "sabao", "detergente", "água sanitária", "agua sanitaria",
+    "desinfetante", "esponja", "vassoura", "álcool", "alcool", "veja",
+    "limpador", "saco de lixo"
+  ],
+  "Higiene": [
+    "barbeador", "amolecedor de unhas", "esmalte", "shampoo", "condic",
+    "sabonete", "creme dental", "pasta de dente", "escova de dente",
+    "absorvente", "fio dental", "cotonete", "hidratante", "perfume",
+    "óleo capilar", "oleo capilar", "protetor solar", "desodorante"
+  ]
+};
+
+function classifyItem(name) {
+  const n = name.toLowerCase();
+  for (const cat of ["Limpeza", "Higiene"]) {
+    if (categories.includes(cat) && CATEGORY_KEYWORDS[cat].some(kw => n.includes(kw))) return cat;
+  }
+  return categories.includes("Alimentos") ? "Alimentos" : categories[0];
+}
+
+const DEFAULT_ITEMS = [
+  ["2 kg arroz", "Alimentos"],
+  ["5 molho pronto", "Alimentos"],
+  ["1 leite condensado", "Alimentos"],
+  ["3 creme de leite", "Alimentos"],
+  ["2 doce de batata", "Alimentos"],
+  ["1 alface", "Alimentos"],
+  ["3 pimenta de cheiro", "Alimentos"],
+  ["miojo", "Alimentos"],
+  ["suco de polpa", "Alimentos"],
+  ["2 kg de frango", "Alimentos"],
+  ["2 kg de carne", "Alimentos"],
+  ["papel higiênico", "Limpeza"],
+  ["cif", "Limpeza"],
+  ["amaciante", "Limpeza"],
+  ["sabão Miguel", "Limpeza"],
+  ["barbeador", "Higiene"],
+  ["amolecedor de unhas", "Higiene"],
+  ["esmalte", "Higiene"],
+  ["desodorante", "Higiene"],
+  ["shampoo e condicionador", "Higiene"],
+  ["óleo capilar", "Higiene"],
+  ["sabonete", "Higiene"]
+];
+
+const hasClaudeStorage = typeof window.storage !== 'undefined';
+
+async function storageGet(key) {
+  if (hasClaudeStorage) {
+    try { return await window.storage.get(key); } catch (e) { return null; }
+  }
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? { value: raw } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function storageSet(key, value) {
+  if (hasClaudeStorage) {
+    return await window.storage.set(key, value);
+  }
+  localStorage.setItem(key, value);
+  return { key, value };
+}
+
+const STORAGE_KEY = "lista-compras-v4";
+const OLD_STORAGE_KEY = "lista-compras-v3";
+let items = []; // { id, name, category, checked, order }
+let categories = []; // ["Alimentos", "Limpeza", ...]
+let editingId = null;
+let editingCategory = null;
+let categoriesPanelOpen = false;
+let statusTimeout = null;
+
+function makeId() {
+  return 'item-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function nextOrder() {
+  return items.length ? Math.max(...items.map(i => i.order ?? 0)) + 1 : 0;
+}
+
+function showStatus(msg) {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = msg;
+  clearTimeout(statusTimeout);
+  statusTimeout = setTimeout(() => { statusEl.textContent = ''; }, 2200);
+}
+
+function groupedItems() {
+  const groups = {};
+  categories.forEach(cat => { groups[cat] = []; });
+  items.forEach(it => {
+    if (!groups[it.category]) groups[it.category] = [];
+    groups[it.category].push(it);
+  });
+  Object.values(groups).forEach(g => g.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+  return groups;
+}
+
+function render() {
+  const sectionsEl = document.getElementById('sections');
+  sectionsEl.innerHTML = '';
+  const groups = groupedItems();
+
+  categories.forEach(sectionName => {
+    const groupItems = groups[sectionName];
+    const section = document.createElement('div');
+    section.className = 'section' + (groupItems.length === 0 ? ' empty' : '');
+
+    const title = document.createElement('div');
+    title.className = 'section-title';
+    const doneCount = groupItems.filter(i => i.checked).length;
+    title.innerHTML = `<span>${sectionName}</span><span class="section-count">${doneCount} de ${groupItems.length}</span>`;
+    section.appendChild(title);
+
+    const ul = document.createElement('ul');
+    ul.dataset.category = sectionName;
+
+    groupItems.forEach(item => {
+      const li = document.createElement('li');
+      li.dataset.id = item.id;
+      if (item.checked) li.classList.add('checked');
+
+      const box = document.createElement('div');
+      box.className = 'box';
+      box.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#14151a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+      box.addEventListener('click', () => toggleItem(item.id));
+      li.appendChild(box);
+
+      if (editingId === item.id) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'edit-input';
+        input.value = item.name;
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') saveEdit(item.id, input.value);
+          if (e.key === 'Escape') { editingId = null; render(); }
+        });
+        li.appendChild(input);
+
+        const actions = document.createElement('div');
+        actions.className = 'item-actions';
+        actions.innerHTML = `
+          <button class="icon-btn save-btn" aria-label="Salvar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </button>
+          <button class="icon-btn cancel-btn" aria-label="Cancelar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        `;
+        actions.querySelector('.save-btn').addEventListener('click', () => saveEdit(item.id, input.value));
+        actions.querySelector('.cancel-btn').addEventListener('click', () => { editingId = null; render(); });
+        li.appendChild(actions);
+
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'item-label';
+        label.textContent = item.name;
+        label.addEventListener('click', () => toggleItem(item.id));
+        li.appendChild(label);
+
+        const actions = document.createElement('div');
+        actions.className = 'item-actions';
+        actions.innerHTML = `
+          <button class="icon-btn edit-btn" aria-label="Editar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+          </button>
+          <button class="icon-btn delete-btn" aria-label="Excluir">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+          </button>
+        `;
+        actions.querySelector('.edit-btn').addEventListener('click', () => { editingId = item.id; render(); });
+        actions.querySelector('.delete-btn').addEventListener('click', () => deleteItem(item.id));
+        li.appendChild(actions);
+
+        const handle = document.createElement('button');
+        handle.className = 'drag-handle';
+        handle.setAttribute('aria-label', 'Reposicionar item');
+        handle.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>`;
+        handle.addEventListener('pointerdown', (e) => startDrag(e, item, li));
+        li.appendChild(handle);
+      }
+
+      ul.appendChild(li);
+    });
+
+    section.appendChild(ul);
+    sectionsEl.appendChild(section);
+  });
+
+  renderCategoriesPanel();
+  updateProgress();
+}
+
+function updateProgress() {
+  const total = items.length;
+  const done = items.filter(i => i.checked).length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = `${done} de ${total}`;
+}
+
+function renderCategoriesPanel() {
+  const panel = document.getElementById('categoriesPanel');
+  panel.classList.toggle('open', categoriesPanelOpen);
+  document.getElementById('categoriesToggleLabel').textContent =
+    categoriesPanelOpen ? 'Fechar categorias' : 'Gerenciar categorias';
+
+  if (!categoriesPanelOpen) return;
+
+  const list = document.getElementById('categoriesList');
+  list.innerHTML = '';
+
+  categories.forEach(cat => {
+    const count = items.filter(i => i.category === cat).length;
+    const row = document.createElement('div');
+    row.className = 'category-row';
+
+    if (editingCategory === cat) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'category-name-input';
+      input.value = cat;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') renameCategory(cat, input.value);
+        if (e.key === 'Escape') { editingCategory = null; render(); }
+      });
+      row.appendChild(input);
+
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'icon-btn save-btn';
+      saveBtn.setAttribute('aria-label', 'Salvar categoria');
+      saveBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+      saveBtn.addEventListener('click', () => renameCategory(cat, input.value));
+      row.appendChild(saveBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'icon-btn cancel-btn';
+      cancelBtn.setAttribute('aria-label', 'Cancelar');
+      cancelBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+      cancelBtn.addEventListener('click', () => { editingCategory = null; render(); });
+      row.appendChild(cancelBtn);
+
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+    } else {
+      const name = document.createElement('div');
+      name.className = 'item-label';
+      name.style.flex = '1';
+      name.textContent = cat;
+      row.appendChild(name);
+
+      const countEl = document.createElement('div');
+      countEl.className = 'category-count';
+      countEl.textContent = `${count} ${count === 1 ? 'item' : 'itens'}`;
+      row.appendChild(countEl);
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'icon-btn edit-btn';
+      editBtn.setAttribute('aria-label', 'Editar categoria');
+      editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>`;
+      editBtn.addEventListener('click', () => { editingCategory = cat; render(); });
+      row.appendChild(editBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'icon-btn delete-btn';
+      deleteBtn.setAttribute('aria-label', 'Excluir categoria');
+      deleteBtn.disabled = categories.length <= 1;
+      deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>`;
+      deleteBtn.addEventListener('click', () => deleteCategory(cat));
+      row.appendChild(deleteBtn);
+    }
+
+    list.appendChild(row);
+  });
+}
+
+async function addCategory(rawName) {
+  const name = rawName.trim();
+  if (!name) return;
+  if (categories.some(c => c.toLowerCase() === name.toLowerCase())) {
+    showStatus(`Categoria "${name}" já existe`);
+    return;
+  }
+  categories.push(name);
+  render();
+  await saveState();
+}
+
+async function renameCategory(oldName, rawNewName) {
+  const newName = rawNewName.trim();
+  if (!newName) { editingCategory = null; render(); return; }
+  if (newName !== oldName && categories.some(c => c.toLowerCase() === newName.toLowerCase())) {
+    showStatus(`Categoria "${newName}" já existe`);
+    return;
+  }
+  const idx = categories.indexOf(oldName);
+  if (idx === -1) return;
+  categories[idx] = newName;
+  items.forEach(it => { if (it.category === oldName) it.category = newName; });
+  editingCategory = null;
+  render();
+  await saveState();
+}
+
+async function deleteCategory(name) {
+  if (categories.length <= 1) {
+    showStatus('Precisa existir ao menos uma categoria');
+    return;
+  }
+  const affected = items.filter(i => i.category === name).length;
+  const fallback = categories.find(c => c !== name);
+  const msg = affected > 0
+    ? `Excluir "${name}"? ${affected} ${affected === 1 ? 'item será movido' : 'itens serão movidos'} para "${fallback}".`
+    : `Excluir a categoria "${name}"?`;
+  if (!confirm(msg)) return;
+
+  categories = categories.filter(c => c !== name);
+  items.forEach(it => {
+    if (it.category === name) {
+      it.category = fallback;
+      it.order = nextOrder();
+    }
+  });
+  render();
+  await saveState();
+}
+
+async function toggleItem(id) {
+  const it = items.find(i => i.id === id);
+  if (it) it.checked = !it.checked;
+  render();
+  await saveState();
+}
+
+async function addItem(rawName) {
+  const name = rawName.trim();
+  if (!name) return;
+  const exists = items.some(i => i.name.toLowerCase() === name.toLowerCase());
+  if (exists) {
+    showStatus(`"${name}" já está na lista`);
+    return;
+  }
+  const category = classifyItem(name);
+  items.push({ id: makeId(), name, category, checked: false, order: nextOrder() });
+  render();
+  await saveState();
+}
+
+async function saveEdit(id, rawName) {
+  const name = rawName.trim();
+  const it = items.find(i => i.id === id);
+  if (!it) { editingId = null; render(); return; }
+  if (name) {
+    const dup = items.some(i => i.id !== id && i.name.toLowerCase() === name.toLowerCase());
+    if (dup) {
+      showStatus(`"${name}" já está na lista`);
+      return;
+    }
+    it.name = name;
+    it.category = classifyItem(name);
+  }
+  editingId = null;
+  render();
+  await saveState();
+}
+
+let dragState = null;
+
+function startDrag(e, item, li) {
+  if (dragState) return; // já existe um item selecionado/sendo arrastado
+  e.preventDefault();
+  const rect = li.getBoundingClientRect();
+
+  const ghost = li.cloneNode(true);
+  ghost.classList.add('drag-ghost');
+  ghost.style.width = rect.width + 'px';
+  ghost.style.height = rect.height + 'px';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  document.body.appendChild(ghost);
+
+  const placeholder = document.createElement('li');
+  placeholder.className = 'drag-placeholder';
+  placeholder.style.height = rect.height + 'px';
+  li.parentNode.insertBefore(placeholder, li);
+  li.remove();
+
+  dragState = {
+    id: item.id,
+    offsetY: e.clientY - rect.top,
+    ghost,
+    placeholder
+  };
+
+  document.body.classList.add('dragging-active');
+  document.addEventListener('pointermove', onDragMove);
+  document.addEventListener('pointerup', onDragEnd);
+  document.addEventListener('pointercancel', onDragEnd);
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  dragState.ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
+
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  if (!under) return;
+
+  const targetLi = under.closest('li:not(.drag-placeholder)');
+  if (targetLi && !targetLi.classList.contains('drag-ghost')) {
+    const targetRect = targetLi.getBoundingClientRect();
+    const midpoint = targetRect.top + targetRect.height / 2;
+    const parentUl = targetLi.parentElement;
+    if (e.clientY < midpoint) {
+      parentUl.insertBefore(dragState.placeholder, targetLi);
+    } else {
+      parentUl.insertBefore(dragState.placeholder, targetLi.nextSibling);
+    }
+    return;
+  }
+
+  const targetUl = under.closest('ul');
+  if (targetUl && dragState.placeholder.parentElement !== targetUl) {
+    targetUl.appendChild(dragState.placeholder);
+  }
+}
+
+async function onDragEnd() {
+  if (!dragState) return;
+  const { id, ghost, placeholder } = dragState;
+
+  const targetUl = placeholder.parentElement;
+  const newCategory = targetUl.dataset.category;
+  const idsBefore = Array.from(targetUl.children)
+    .slice(0, Array.from(targetUl.children).indexOf(placeholder))
+    .filter(el => el.dataset && el.dataset.id)
+    .map(el => el.dataset.id);
+
+  ghost.remove();
+  placeholder.remove();
+  document.body.classList.remove('dragging-active');
+  document.removeEventListener('pointermove', onDragMove);
+  document.removeEventListener('pointerup', onDragEnd);
+  document.removeEventListener('pointercancel', onDragEnd);
+  dragState = null;
+
+  await commitReorder(id, newCategory, idsBefore.length);
+}
+
+async function commitReorder(id, newCategory, newIndex) {
+  const it = items.find(i => i.id === id);
+  if (!it) return;
+  it.category = newCategory;
+
+  const catItems = items
+    .filter(i => i.category === newCategory && i.id !== id)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  catItems.splice(newIndex, 0, it);
+  catItems.forEach((entry, idx) => { entry.order = idx; });
+
+  render();
+  await saveState();
+}
+
+async function deleteItem(id) {
+  const it = items.find(i => i.id === id);
+  if (!it) return;
+  if (!confirm(`Excluir "${it.name}"?`)) return;
+  items = items.filter(i => i.id !== id);
+  render();
+  await saveState();
+}
+
+async function saveState() {
+  const statusEl = document.getElementById('status');
+  try {
+    await storageSet(STORAGE_KEY, JSON.stringify({ items, categories }));
+  } catch (e) {
+    statusEl.textContent = 'Não foi possível salvar (offline?)';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  }
+}
+
+async function loadState() {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = 'Carregando...';
+
+  const freshDefaults = () => {
+    categories = DEFAULT_CATEGORIES.slice();
+    items = DEFAULT_ITEMS.map(([name, category], idx) => ({ id: makeId(), name, category, checked: false, order: idx }));
+  };
+
+  try {
+    const result = await storageGet(STORAGE_KEY);
+    if (result && result.value) {
+      const parsed = JSON.parse(result.value);
+      items = Array.isArray(parsed.items) ? parsed.items : [];
+      categories = Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : DEFAULT_CATEGORIES.slice();
+    } else {
+      // Tenta migrar dados salvos na versão anterior (apenas itens, sem categorias customizadas)
+      let migrated = false;
+      try {
+        const old = await storageGet(OLD_STORAGE_KEY);
+        if (old && old.value) {
+          items = JSON.parse(old.value);
+          categories = DEFAULT_CATEGORIES.slice();
+          migrated = true;
+        }
+      } catch (e) { /* sem dados antigos, segue para o padrão */ }
+      if (!migrated) freshDefaults();
+    }
+  } catch (e) {
+    freshDefaults();
+  }
+
+  // Compatibilidade: garante order e categoria válida em itens salvos anteriormente
+  items.forEach((it, idx) => {
+    if (typeof it.order !== 'number') it.order = idx;
+    if (!categories.includes(it.category)) it.category = categories[0];
+  });
+
+  statusEl.textContent = '';
+  render();
+}
+
+document.getElementById('resetBtn').addEventListener('click', async () => {
+  items.forEach(i => i.checked = false);
+  render();
+  await saveState();
+});
+
+document.getElementById('categoriesToggle').addEventListener('click', () => {
+  categoriesPanelOpen = !categoriesPanelOpen;
+  editingCategory = null;
+  render();
+});
+
+const newCategoryInput = document.getElementById('newCategoryInput');
+document.getElementById('addCategoryBtn').addEventListener('click', () => {
+  addCategory(newCategoryInput.value);
+  newCategoryInput.value = '';
+  newCategoryInput.focus();
+});
+newCategoryInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    addCategory(newCategoryInput.value);
+    newCategoryInput.value = '';
+  }
+});
+
+const newItemInput = document.getElementById('newItemInput');
+document.getElementById('addBtn').addEventListener('click', () => {
+  addItem(newItemInput.value);
+  newItemInput.value = '';
+  newItemInput.focus();
+});
+newItemInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    addItem(newItemInput.value);
+    newItemInput.value = '';
+  }
+});
+
+loadState();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+
+</script>
+</body>
+</html>
