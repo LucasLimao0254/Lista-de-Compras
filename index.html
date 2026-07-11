@@ -599,7 +599,13 @@ function render() {
     const title = document.createElement('div');
     title.className = 'section-title';
     const doneCount = groupItems.filter(i => i.checked).length;
-    title.innerHTML = `<span>${sectionName}</span><span class="section-count">${doneCount} de ${groupItems.length}</span>`;
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = sectionName;
+    const countSpan = document.createElement('span');
+    countSpan.className = 'section-count';
+    countSpan.textContent = `${doneCount} de ${groupItems.length}`;
+    title.appendChild(nameSpan);
+    title.appendChild(countSpan);
     section.appendChild(title);
 
     const ul = document.createElement('ul');
