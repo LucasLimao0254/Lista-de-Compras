@@ -10,7 +10,10 @@ o pacote traz o app pronto pra virar um repositório: `index.html`, `manifest.js
 App web de página única (HTML+CSS+JS puro, sem build, sem backend) que substitui
 três controles separados por um só, com navegação por menu lateral:
 
-1. **Visão Geral** — resumo agregado dos outros três módulos.
+1. **Visão Geral** — total já desembolsado no mês (número principal) com barra
+   segmentada (contas pagas / mercado / contas pendentes) e um cartão-resumo de
+   cada módulo. O **sino de notificações** do cabeçalho junta os alertas: contas
+   vencendo nos próximos dias e quedas de preço da Lista de Desejos.
 2. **Lista de Compras** — checklist com categorização automática por palavra-chave,
    drag-and-drop entre categorias, e autocompletar baseado no histórico de itens
    já digitados. Mostra uma **estimativa de valor** dos itens pendentes, cruzando
@@ -26,28 +29,44 @@ três controles separados por um só, com navegação por menu lateral:
 5. **Comparador de Preços** — calculadora avulsa (não salva nada) tipo "regra de
    três": compara preço por quantidade entre produtos parecidos (ex: R$10/100ml
    vs R$8/750ml) e diz qual rende mais por litro/quilo/unidade.
+6. **Lista de Desejos** — itens que o usuário quer comprar, cada um com um **valor
+   esperado** e uma lista de **links de lojas online**, cada link com o seu preço.
+   Mostra a média dos preços dos links; quando o **menor** preço fica abaixo do valor
+   esperado, conta como "queda de preço" (aparece no sino e na Visão Geral). Só links
+   `http(s)` viram `<a>`; qualquer outro esquema (`javascript:` etc.) é exibido como texto.
 
 ## Arquitetura
 
 Um único arquivo `index.html` com:
-- `<style>` único no `<head>` com todo o CSS (tema escuro, variáveis CSS em `:root`).
+- `<style>` único no `<head>` com todo o CSS, no visual do sistema **Nocturne**
+  (tema escuro, roxo `#9184d9`, botões só contornados, cards sem borda). Os tokens
+  ficam em `:root` com os nomes do design system (`--color-bg`, `--color-accent`,
+  `--color-neutral-*`…) **e** os nomes antigos (`--bg`, `--panel`, `--accent`,
+  `--s1…--s8`…) como aliases — o JS lê esses nomes (`cssColor('--s1')` etc.), então
+  não os renomeie. Cores estão em hex/rgba (não `oklch()`/`color-mix()`) para
+  funcionar em iOS mais antigo. A fonte **Inter** (latin, variável, SIL OFL) está
+  embutida em base64 no `@font-face` para o app seguir 100% offline. Há uma única
+  `@media (min-width: 720px)` (coluna central de até 720px, tipografia maior).
 - Um `<script>` compartilhado no topo com a camada de storage
   (`storageGet`/`storageSet`, que usa `window.storage` quando existe — ambiente
   de artifact do Claude — ou cai pra `localStorage` fora dele) e um diálogo
   próprio de confirmar/alertar (`window.appConfirm`/`window.appAlert`), porque o
   `confirm()`/`alert()` nativo do navegador pode ser bloqueado silenciosamente em
   alguns ambientes de preview em iframe.
-- **Cinco módulos independentes**, cada um num `<script>` próprio, envolto numa
+- **Seis módulos independentes**, cada um num `<script>` próprio, envolto numa
   IIFE `(function(){...})()` — isso evita colisão de nomes de variável entre eles
   (cada um pode ter sua própria `items`, `render()`, etc. sem conflito). Os IDs de
   elemento no DOM são prefixados por módulo: `sc-` (compras), `ex-` (despesas),
-  `mk-` (mercado), `cp-` (comparador).
-- Os três módulos com dados persistentes (compras, despesas, mercado) expõem
-  `window.CF.<modulo>.init()` (carrega do storage) e `.summary()` (resumo
+  `mk-` (mercado), `cp-` (comparador), `wl-` (desejos).
+- Os quatro módulos com dados persistentes (compras, despesas, mercado, desejos)
+  expõem `window.CF.<modulo>.init()` (carrega do storage) e `.summary()` (resumo
   read-only pra Visão Geral usar). O mercado também expõe `.getPriceIndex()`,
-  usado pela Lista de Compras pra estimar preços.
-- Um script final de navegação (menu lateral, troca de `view`) faz
-  `Promise.all([...init() dos 3 módulos...])` e só depois renderiza a Visão Geral.
+  usado pela Lista de Compras pra estimar preços; despesas expõe `.dueSoon()` e
+  desejos expõe `.priceDrops()`, que alimentam o sino de notificações.
+- O script final de navegação (menu lateral, troca de `view`, sino de notificações)
+  faz `Promise.all([...init() dos 4 módulos...])` e só depois renderiza a Visão Geral.
+  Qualquer módulo que altere dados relevantes para o sino chama
+  `window.CF.refreshAlerts()` (definida nesse script) para atualizá-lo na hora.
 - Dois `<script>` com bibliotecas de terceiros **embutidas por completo como
   texto** (não carregadas de CDN): `pdf.js` e seu worker, usados pra ler PDF de
   NFC-e 100% offline. Ver aviso importante sobre isso mais abaixo.
@@ -69,7 +88,9 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
 
 ## Chaves de storage usadas
 
-- `cf-shopping-v1`, `cf-expenses-v1`, `cf-market-v1` — dados atuais de cada módulo.
+- `cf-shopping-v1`, `cf-expenses-v1`, `cf-market-v1`, `cf-wishlist-v1` — dados atuais
+  de cada módulo. Desejos: `{ items: [{ id, name, expectedPrice, note, links: [{ id, url, price }] }] }`
+  (`price` 0 = link sem preço informado, ignorado na média e na queda de preço).
 - Migração automática (uma vez só, na primeira carga de cada módulo se a chave
   nova estiver vazia): lista de compras busca em `lista-compras-v4`, despesas
   fixas busca em `despesas-fixas-v1` (chaves de apps standalone anteriores).
@@ -104,7 +125,20 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
   média ponderada pelo número de compras quando casa com mais de um produto).
 - PWA completo: manifest com ícones normal + maskable, service worker
   (cache-first com atualização em segundo plano), meta tags específicas do
-  iOS Safari (que ignora o manifest pra nome/ícone).
+  iOS Safari (que ignora o manifest pra nome/ícone). Ao mudar `index.html` de
+  forma relevante, incremente `CACHE_NAME` em `service-worker.js`.
+- Redesign Nocturne (menu lateral com 6 destinos, sino de notificações, formulário
+  de "Nova despesa" recolhível, KPIs do Mercado em grade 2×2, histórico de compras em
+  cartões, diálogo de confirmação com botão vermelho só para ações destrutivas).
+  O botão "Importar dados (.json)" usa o rótulo "Importar" em roxo, não "Excluir".
+- **Virada do mês nas Despesas fixas** (automática): ao abrir o app (ou voltar do segundo plano) num mês novo, as contas
+  **pagas** voltam a pendente e as **não pagas continuam**, acumulando `unpaidMonths` (1 = só o mês atual). Com 2 ou mais
+  a linha mostra "Sem pagamento há N meses" e a conta conta como atrasada (não como "vencendo"). O usuário é avisado uma vez
+  por um diálogo. O mês de referência fica em `cycle` (AAAA-MM) dentro de `cf-expenses-v1`; dados antigos, sem `cycle`, só
+  registram o mês atual. Se o app ficar meses sem abrir, todos os meses decorridos contam como sem pagamento nas contas que
+  estavam pendentes. "Reiniciar mês" e "Desmarcar tudo" (Compras) pedem confirmação.
+- Acessibilidade: modais com `role="dialog"`/`aria-modal`, foco que entra ao abrir, Tab preso dentro e retorno do foco ao
+  fechar; menu lateral fechado fora da ordem de Tab; Esc fecha o item do topo (diálogo > modais > menu > sino).
 
 ## Limitações conhecidas (decisões deliberadas, não bugs)
 
@@ -140,6 +174,10 @@ Se o usuário pedir para continuar dessas ideias (já validadas com ele antes):
 2. Validar sintaxe: extrair os `<script>` sem atributos (ver aviso acima) e
    rodar `node --check` em cada um.
 3. Checar IDs duplicados no HTML inteiro.
+3b. Rodar `npm test` (ver `tests/e2e.js`): verificações de ponta a ponta com dados fictícios, fuso
+   America/Sao_Paulo e data fixa (inclui fuso à noite, arrastar e soltar, Esc nos modais e PWA offline). Ao mudar comportamento, acrescente o teste correspondente; e, para ter certeza de que
+   um teste novo realmente pega o defeito, rode-o contra uma cópia quebrada com `TEST_INDEX=copia.html`.
+   Observação: o GitHub Pages publica a raiz inteira, então `tests/` também vai ao ar (só tem dados fictícios).
 4. Quando mexer em lógica de cálculo (preços, datas, parsing de NFC-e), testar
    com `node -e "..."` isolando só a função pura antes de aplicar no arquivo —
    esse projeto usou bastante esse padrão pra pegar bugs de matemática/parsing

@@ -5,7 +5,7 @@
 // em segundo plano": abre rápido usando a cópia salva, e atualiza o cache pra
 // próxima vez sempre que houver conexão.
 
-const CACHE_NAME = 'controle-financeiro-v1';
+const CACHE_NAME = 'controle-financeiro-v2';
 const ASSETS = [
   './',
   './index.html',

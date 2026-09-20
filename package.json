@@ -1,0 +1,11 @@
+{
+  "name": "controle-financeiro",
+  "private": true,
+  "description": "PWA de página única (HTML+CSS+JS puro). Sem build e sem dependências; o package.json existe só para o comando de teste.",
+  "scripts": {
+    "test": "node tests/e2e.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
