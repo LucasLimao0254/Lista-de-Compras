@@ -1,0 +1,3 @@
+# Dados pessoais (backups/importações) nunca vão para o repositório público
+*.json
+!manifest.json
