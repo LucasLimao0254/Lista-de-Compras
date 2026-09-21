@@ -281,7 +281,7 @@
   .sc-add-row input, .cat-name-input, .add-cat-row input, .ex-add-panel input, .ex-add-panel select,
   .field input, .field select, .field textarea, .filters input, .filters select, .cp-name,
   .cp-field input, .cp-field select, .mk-item-row input, .mk-item-row select, .goal-edit input,
-  .pc-search input, .edit-input, .wl-form input, .wl-link-add input, .wl-reg input {
+  .pc-search input, .edit-input, .wl-form input, .wl-link-add input, .wl-reg input, .px-field input, .px-field select {
     width: 100%; min-height: 40px; padding: 6px 10px; font: inherit; font-size: 14px; line-height: 1.3;
     color: var(--text); caret-color: var(--accent);
     background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md);
@@ -396,6 +396,34 @@
   .summary-value.paid { color: var(--good); }
 
   .ex-duesoon-card { display: none; }
+
+  /* Avisos por push (Despesas) */
+  .px-card > summary {
+    list-style: none; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px;
+    border: 1px solid var(--line); border-radius: var(--radius-md); cursor: pointer;
+    font-size: 14px; font-weight: 500; color: var(--text);
+  }
+  .px-card > summary::-webkit-details-marker { display: none; }
+  .px-card > summary svg { width: 16px; height: 16px; flex: none; }
+  .px-card > summary::after {
+    content: ''; flex: none; width: 7px; height: 7px; margin: -3px 2px 0 4px;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform 0.15s;
+  }
+  .px-card[open] > summary::after { transform: rotate(-135deg); margin-top: 3px; }
+  .px-card > summary:hover { background: rgba(233, 233, 237, 0.07); }
+  .px-card > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .px-badge { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
+  .px-card.on .px-badge { color: var(--good); }
+  .px-body { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; padding: 12px; background: var(--panel); border-radius: var(--radius-md); }
+  .px-status { margin: 0; font-size: 13px; line-height: 1.5; }
+  .px-status.error { color: var(--color-danger-300); }
+  .px-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+  .px-field input, .px-field select { background: var(--bg); }
+  .px-row { display: flex; gap: 8px; }
+  .px-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .px-actions .btn { flex: 1 1 140px; }
+  .px-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+  .px-note a { color: var(--accent); }
   .ex-add-panel { display: none; background: var(--panel); border-radius: var(--radius-md); padding: 10px; flex-direction: column; gap: 8px; }
   .ex-add-panel.open { display: flex; }
   .ex-add-panel input, .ex-add-panel select { background: var(--bg); }
@@ -821,6 +849,29 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"></path><line x1="12" y1="10" x2="12" y2="14"></line><line x1="12" y1="17" x2="12" y2="17.3"></line></svg>
       <div id="ex-dueSoonLabel"></div>
     </div>
+
+    <details class="px-card" id="px-card">
+      <summary>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+        <span>Avisos por push</span>
+        <span class="px-badge" id="px-badge">desativado</span>
+      </summary>
+      <div class="px-body">
+        <p class="px-status" id="px-status" role="status" aria-live="polite"></p>
+        <label class="px-field">Endereço do seu Worker
+          <input type="url" id="px-url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://controle-financeiro-avisos.SEU-USUARIO.workers.dev">
+        </label>
+        <div class="px-row">
+          <label class="px-field">Avisar<select id="px-lead"></select></label>
+          <label class="px-field">Horário<select id="px-hour"></select></label>
+        </div>
+        <div class="px-actions">
+          <button class="btn btn-primary" id="px-toggle" type="button">Ativar avisos</button>
+          <button class="btn btn-secondary" id="px-test" type="button" disabled>Enviar aviso de teste</button>
+        </div>
+        <p class="px-note" id="px-note">O aviso chega no celular mesmo com o app fechado, uma vez por dia, com as contas não pagas que vencem hoje ou nos próximos dias. Para isso o seu Worker guarda o nome, o valor e o dia de vencimento das suas contas (e se estão pagas). No iPhone é preciso iOS 16.4 ou mais novo e o app instalado na tela inicial. <a href="https://github.com/LucasLimao0254/Lista-de-Compras/blob/main/push-worker/LEIA-ME.md" target="_blank" rel="noopener">Como criar o Worker</a>.</p>
+      </div>
+    </details>
 
     <button class="btn btn-secondary btn-block" id="ex-newToggle" type="button" aria-expanded="false">+ Nova despesa</button>
     <div class="ex-add-panel" id="ex-addPanel">
@@ -2194,9 +2245,11 @@ async function commitReorder(id, newCategory, newIndex) {
   await saveState();
 }
 
+const changeListeners = [];
 async function saveState() {
   try { await storageSet(STORAGE_KEY, JSON.stringify({ items: items, categories: categories, cycle: cycle })); }
   catch (e) { showStatus('Não foi possível salvar (offline?)'); }
+  changeListeners.forEach(function (fn) { try { fn(); } catch (e) { /* um ouvinte com problema não pode travar o salvamento */ } });
 }
 
 async function loadState() {
@@ -2324,6 +2377,17 @@ window.CF.expenses.summary = function () {
   const total = items.reduce((s, i) => s + (i.amount || 0), 0);
   const paid = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
   return { total: total, paid: paid, pending: total - paid };
+};
+// Ouvintes chamados a cada salvamento (o módulo de avisos por push mantém o Worker em dia)
+window.CF.expenses.onChange = function (fn) { changeListeners.push(fn); };
+// O que o Worker de avisos precisa saber: só contas com dia de vencimento, sem categoria nem anotações
+window.CF.expenses.snapshot = function () {
+  return {
+    cycle: cycle,
+    bills: items.filter(function (i) { return i.name && Number.isInteger(i.dueDay) && i.dueDay >= 1 && i.dueDay <= 31; }).slice(0, 500).map(function (i) {
+      return { name: String(i.name).slice(0, 60), amount: Number.isFinite(i.amount) && i.amount >= 0 ? i.amount : 0, dueDay: i.dueDay, paid: !!i.paid, unpaidMonths: i.unpaidMonths || 1 };
+    })
+  };
 };
 // Contas não pagas que vencem hoje ou nos próximos 3 dias (usado pelo sino de notificações)
 window.CF.expenses.dueSoon = function () {
@@ -4185,6 +4249,235 @@ window.CF.wishlist.priceDrops = function () {
 </script>
 
 <script>
+/* ---------- Avisos por push (conta perto de vencer) ----------
+   O app não tem servidor, então quando está fechado ele não consegue avisar nada. Quem avisa é o Worker em push-worker/
+   (Cloudflare, gratuito, criado pelo próprio usuário): este módulo só (1) pede a permissão, (2) cria a assinatura de
+   push do aparelho e (3) mantém o Worker com a lista de contas em dia (nome, valor, dia do vencimento, se está paga).
+   Ver push-worker/LEIA-ME.md e HANDOFF.md. Storage: cf-push-v1 = { url, enabled, lead, hour }. */
+(function () {
+
+const KEY = 'cf-push-v1';
+const $ = function (id) { return document.getElementById(id); };
+let state = { url: '', enabled: false, lead: 3, hour: 8 };
+let busy = false, syncing = false, resync = false, syncTimer = null;
+let lastSyncAt = null, syncError = '', flash = '', flashKind = '';
+
+function supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+
+// Endereço do Worker: https (http só em localhost, para desenvolvimento), sem usuário/senha, sem query/hash, sem "/" no fim.
+function normUrl(raw) {
+  let u; try { u = new URL(String(raw || '').trim()); } catch (e) { return null; }
+  const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && local)) return null;
+  if (u.username || u.password) return null;
+  return (u.origin + u.pathname).replace(/\/+$/, '');
+}
+
+function clampInt(v, min, max, dflt) { return Number.isInteger(v) && v >= min && v <= max ? v : dflt; }
+function hhmm(d) { return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function tz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo'; } catch (e) { return 'America/Sao_Paulo'; } }
+
+function keyBytes(b64) {
+  const s = String(b64).replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(s + '='.repeat((4 - s.length % 4) % 4));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function sameKey(sub, key) {
+  const cur = sub.options && sub.options.applicationServerKey;
+  if (!cur) return true;   // o navegador não informa: não dá para comparar, mantém
+  const a = new Uint8Array(cur);
+  if (a.length !== key.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== key[i]) return false;
+  return true;
+}
+
+// Fala com o Worker. Erros viram Error com mensagem em português; err.network = sem resposta nenhuma.
+async function api(path, body) {
+  const ctl = new AbortController(), t = setTimeout(function () { ctl.abort(); }, 15000);
+  let res;
+  try {
+    res = await fetch(state.url + path, body === undefined ? { signal: ctl.signal }
+      : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
+  } catch (e) {
+    const err = new Error('Não consegui falar com o Worker. Confira o endereço e a conexão.'); err.network = true; throw err;
+  } finally { clearTimeout(t); }
+  let data = null; try { data = await res.json(); } catch (e) { data = null; }
+  if (!res.ok) {
+    const err = new Error(res.status === 403 ? 'O Worker não aceita este site. Confira ALLOWED_ORIGINS no wrangler.toml do Worker.'
+      : (data && data.error) ? String(data.error) : 'O Worker respondeu HTTP ' + res.status + '.');
+    err.status = res.status; throw err;
+  }
+  return data || {};
+}
+
+function getReg() {
+  return Promise.race([navigator.serviceWorker.ready, new Promise(function (_, reject) {
+    setTimeout(function () { reject(new Error('O app ainda não terminou de instalar. Recarregue a página e tente de novo.')); }, 8000);
+  })]);
+}
+
+// Cria (ou reaproveita) a assinatura de push deste aparelho para a chave VAPID do Worker.
+async function subscribeNow() {
+  const vapid = await api('/vapid');
+  if (!vapid.publicKey) throw new Error('O Worker não devolveu a chave VAPID. Confira as chaves no wrangler.toml.');
+  const key = keyBytes(vapid.publicKey);
+  const reg = await getReg();
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !sameKey(sub, key)) { await sub.unsubscribe(); sub = null; }   // o Worker trocou de chave: a assinatura velha não serve mais
+  if (!sub) {
+    try { sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); }
+    catch (e) { throw new Error('o navegador não criou a assinatura de push (' + (e && e.message ? e.message : e) + ')'); }
+  }
+  return sub;
+}
+
+function payload(sub) {
+  const snap = window.CF.expenses.snapshot();
+  return { subscription: sub.toJSON(), bills: snap.bills, cycle: snap.cycle, tz: tz(), hour: state.hour, leadDays: state.lead };
+}
+
+async function save() {
+  try { await storageSet(KEY, JSON.stringify(state)); } catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+}
+function setFlash(msg, kind) { flash = msg; flashKind = kind || ''; }
+
+function statusText() {
+  if (!supported()) return 'Este navegador não suporta avisos por push. No iPhone é preciso iOS 16.4 ou mais novo e abrir o app pelo ícone da tela inicial (Compartilhar → Adicionar à Tela de Início); fora disso o Safari não oferece push.';
+  if (busy) return 'Trabalhando…';
+  if (flash) return flash;
+  if (!state.enabled) return 'Desativado. Ative para receber um aviso no celular quando uma conta estiver perto de vencer, mesmo com o app fechado.';
+  if (Notification.permission !== 'granted') return 'As notificações estão bloqueadas neste aparelho. Libere nos ajustes para voltar a receber os avisos.';
+  const when = state.lead === 0 ? 'no dia do vencimento' : state.lead === 1 ? '1 dia antes' : state.lead + ' dias antes';
+  let s = 'Ativado. Você recebe um aviso às ' + state.hour + 'h, ' + when + ', das contas não pagas.';
+  if (lastSyncAt) s += ' Contas enviadas ao Worker às ' + hhmm(lastSyncAt) + '.';
+  if (syncError) s += ' ' + syncError;
+  return s;
+}
+
+function render() {
+  const sup = supported(), on = state.enabled && sup;
+  $('px-toggle').textContent = on ? 'Desativar avisos' : 'Ativar avisos';
+  $('px-toggle').disabled = !sup || busy;
+  $('px-test').disabled = !on || busy;
+  $('px-url').readOnly = on || busy;
+  $('px-badge').textContent = on ? 'ativado' : 'desativado';
+  $('px-card').classList.toggle('on', on);
+  const st = $('px-status');
+  st.textContent = statusText();
+  st.classList.toggle('error', !busy && flashKind === 'error' && !!flash || (on && !!syncError && !flash));
+}
+
+async function enable() {
+  if (busy) return;
+  const url = normUrl($('px-url').value);
+  if (!url) { setFlash('Cole o endereço do seu Worker (começa com https://). Veja como criar em push-worker/LEIA-ME.md, no repositório.', 'error'); render(); return; }
+  busy = true; setFlash(''); render();
+  try {
+    // A permissão vem primeiro e direto do toque: o iPhone só aceita o pedido logo depois de um gesto do usuário.
+    const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (perm !== 'granted') {
+      setFlash(perm === 'denied'
+        ? 'A permissão de notificações foi negada. Libere nos ajustes do aparelho (iPhone: Ajustes → Notificações → este app; navegador: cadeado ao lado do endereço) e tente de novo.'
+        : 'A permissão de notificações não foi concedida. Toque em "Ativar avisos" de novo e escolha Permitir.', 'error');
+      return;
+    }
+    state.url = url;
+    const sub = await subscribeNow();
+    await api('/subscribe', payload(sub));
+    state.enabled = true; lastSyncAt = new Date(); syncError = '';
+    await save();
+  } catch (e) {
+    state.enabled = false;
+    setFlash(e.network ? e.message : 'Não consegui ativar: ' + e.message, 'error');
+  } finally { busy = false; render(); }
+}
+
+async function disable() {
+  if (busy) return;
+  busy = true; setFlash(''); render();
+  try {
+    let sub = null;
+    try { sub = await (await getReg()).pushManager.getSubscription(); } catch (e) { sub = null; }
+    if (sub) {
+      // Sem rede o Worker não fica sabendo, mas ele apaga a assinatura sozinho quando o serviço de push recusar o próximo envio.
+      try { await api('/unsubscribe', { subscription: sub.toJSON() }); } catch (e) { /* segue para cancelar neste aparelho */ }
+      try { await sub.unsubscribe(); } catch (e) { /* já cancelada */ }
+    }
+    state.enabled = false; syncError = ''; clearTimeout(syncTimer);
+    await save();
+  } finally { busy = false; render(); }
+}
+
+async function sendTest() {
+  if (busy || !state.enabled) return;
+  busy = true; setFlash(''); render();
+  try {
+    const sub = await (await getReg()).pushManager.getSubscription();
+    if (!sub) throw new Error('Este aparelho está sem assinatura de push. Desative e ative os avisos de novo.');
+    await api('/test', { subscription: sub.toJSON() });
+    setFlash('Aviso de teste enviado. Ele deve chegar em alguns segundos; se não chegar, confira as permissões de notificação do aparelho.', 'info');
+  } catch (e) { setFlash('O teste falhou: ' + e.message, 'error'); }
+  finally { busy = false; render(); }
+}
+
+// Mantém o Worker com a lista de contas atual. Chamada (com atraso) a cada mudança nas despesas, ao mudar
+// horário/antecedência, ao abrir o app, ao voltar para ele e quando a internet volta.
+async function sync() {
+  if (!state.enabled || !supported() || Notification.permission !== 'granted') { render(); return; }
+  if (syncing || busy) { resync = true; return; }
+  syncing = true;
+  try {
+    let sub = await (await getReg()).pushManager.getSubscription();
+    if (!sub) sub = await subscribeNow();   // o navegador descartou a assinatura: refaz sozinho (a permissão já foi dada)
+    await api('/subscribe', payload(sub));
+    lastSyncAt = new Date(); syncError = '';
+  } catch (e) {
+    syncError = e.network ? 'Sem conexão com o Worker: as contas não foram atualizadas agora. Tento de novo quando o app voltar.' : 'Não consegui atualizar as contas: ' + e.message;
+  } finally { syncing = false; }
+  render();
+  if (resync) { resync = false; scheduleSync(300); }
+}
+function scheduleSync(ms) {
+  clearTimeout(syncTimer);
+  if (!state.enabled) return;
+  syncTimer = setTimeout(sync, ms);
+}
+
+function fillSelects() {
+  const lead = $('px-lead'), hour = $('px-hour');
+  for (let d = 0; d <= 7; d++) { const o = document.createElement('option'); o.value = String(d); o.textContent = d === 0 ? 'No dia do vencimento' : d === 1 ? '1 dia antes' : d + ' dias antes'; lead.appendChild(o); }
+  for (let h = 0; h < 24; h++) { const o = document.createElement('option'); o.value = String(h); o.textContent = String(h).padStart(2, '0') + ':00'; hour.appendChild(o); }
+}
+
+$('px-toggle').addEventListener('click', function () { if (state.enabled) disable(); else enable(); });
+$('px-test').addEventListener('click', sendTest);
+$('px-lead').addEventListener('change', function () { state.lead = clampInt(parseInt($('px-lead').value, 10), 0, 7, 3); save(); render(); scheduleSync(300); });
+$('px-hour').addEventListener('change', function () { state.hour = clampInt(parseInt($('px-hour').value, 10), 0, 23, 8); save(); render(); scheduleSync(300); });
+document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') scheduleSync(0); });
+window.addEventListener('online', function () { scheduleSync(0); });
+window.CF.expenses.onChange(function () { scheduleSync(1500); });
+
+async function init() {
+  try {
+    const r = await storageGet(KEY);
+    if (r && r.value) {
+      const p = JSON.parse(r.value);
+      state = { url: typeof p.url === 'string' ? p.url : '', enabled: p.enabled === true, lead: clampInt(p.lead, 0, 7, 3), hour: clampInt(p.hour, 0, 23, 8) };
+    }
+  } catch (e) { /* estado padrão */ }
+  fillSelects();
+  $('px-url').value = state.url; $('px-lead').value = String(state.lead); $('px-hour').value = String(state.hour);
+  render();
+  scheduleSync(0);
+}
+window.CF.push = { init: init };
+
+})();
+</script>
+
+<script>
 (function () {
 
 const drawer = document.getElementById('drawer');
@@ -4233,6 +4526,11 @@ document.querySelectorAll('.drawer-item').forEach(function(btn) {
 document.querySelectorAll('[data-goto]').forEach(function(el) {
   el.addEventListener('click', function() { goToView(el.dataset.goto); });
 });
+
+window.CF.goToView = goToView;
+function openViewByName(v) { if (typeof v === 'string' && Object.prototype.hasOwnProperty.call(TITLES, v)) goToView(v); }
+// Toque numa notificação de push com o app já aberto: o service worker manda esta mensagem (ver service-worker.js)
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', function(e) { openViewByName(e.data && e.data.cfOpenView); });
 
 function fmtBRL(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 function setText(id, text) { document.getElementById(id).textContent = text; }
@@ -4386,6 +4684,10 @@ Promise.all([
   renderOverview();
   renderAlerts();
   if (window.CF.shopping.refreshPriceEstimates) window.CF.shopping.refreshPriceEstimates();
+  // Toque numa notificação com o app fechado: o service worker abre "#despesas"
+  const wanted = location.hash.replace(/^#/, '');
+  if (wanted && wanted !== 'overview') { openViewByName(wanted); history.replaceState(null, '', location.pathname + location.search); }
+  window.CF.push.init();
 });
 
 })();

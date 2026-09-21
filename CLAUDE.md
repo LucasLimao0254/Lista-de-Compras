@@ -37,6 +37,12 @@ antigo) e sem fonte externa (a Inter está embutida em base64). Detalhes em `HAN
   (Amazon/Mercado Livre/Magalu bloqueiam) — tudo é digitado pelo usuário.
 - **Modais** ganham foco, prisão de Tab e retorno de foco automaticamente (observador em `.overlay`); ao criar um modal novo,
   inclua-o na lista `modalOverlays` e dê `role="dialog"`, `aria-modal` e um nome.
+- **Avisos por push:** a regra de "perto de vencer" existe em `dueSoonDays` (app) **e** em `dueBills` (`push-worker/worker.mjs`); mude as
+  duas juntas. Todo `push` no `service-worker.js` tem de acabar em `showNotification` (senão iOS/Chrome revogam a permissão), e o
+  destino do clique nunca vem do conteúdo do push. O endereço de push recebido pelo Worker só é chamado se for de Google/Apple/Mozilla/
+  Microsoft (anti-SSRF), e só o `ALLOWED_ORIGINS` fala com ele: não afrouxe. Os testes `px-` do e2e usam um stub (`PUSH_STUB`).
+- **Fim de linha:** os arquivos do repositório estão em CRLF no Windows (`core.autocrlf`); scripts que editam por substituição de texto
+  precisam normalizar `\r\n` antes de casar trechos.
 
 ## Rodar localmente
 
@@ -48,12 +54,13 @@ npx serve .
 
 ## Validar antes de entregar
 
-- **Testes:** `npm test` (só Node ≥ 22 e um Chrome/Edge; sem dependências). Roda `tests/e2e.js`: sobe o app, fixa a
+- **Testes:** `npm test` (só Node ≥ 22 e um Chrome/Edge; sem dependências). Roda antes `tests/push-worker.test.mjs` (Worker de push: cifragem, VAPID, regras de vencimento, cron, API) e `tests/service-worker.test.mjs` (push/click/cache, em `node:vm`), depois `tests/e2e.js`: sobe o app, fixa a
   data em 15/09/2026 e usa dados fictícios, então é determinístico e nunca toca em dados reais. Cobre Visão geral/sino,
   despesas, lista de desejos, mercado, comparador, primeiro uso, layout (320–1280 px), tokens de CSS,
   "nenhum recurso externo", fuso horário à noite, arrastar e soltar e o app abrindo offline (service worker).
   Ao achar um bug, escreva o teste que falha primeiro e só então corrija.
   `TEST_INDEX=outro.html npm test` roda contra uma cópia (útil para conferir que o teste pega um defeito).
+  `TEST_FILTER="^push:" node tests/e2e.js` roda só os testes cujo nome casar (combine com `TEST_INDEX` para testar um defeito isolado sem esperar a suíte toda).
 
 - Sintaxe: extrair os `<script>` sem atributos (`/<script>([\s\S]*?)<\/script>/g`) e rodar `node --check` em cada um.
 - IDs duplicados: `grep -oE 'id="[a-zA-Z0-9_-]+"' index.html | sort | uniq -c | sort -rn`.
