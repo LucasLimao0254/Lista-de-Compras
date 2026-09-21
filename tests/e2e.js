@@ -536,6 +536,18 @@ async function launch(port) {
     ok(!/caíram de preço|caiu de preço/.test(norm(await ev(`return document.getElementById('notifPanel').innerText`))), 'sino sem alerta de preço');
   });
 
+  await test('o menor preço aparece sempre que há preço registrado (verde só se estiver abaixo do esperado) e acompanha o histórico', async () => {
+    await openPage(); await goto('desejos');
+    const resumo = name => ev(`const p=${wlCard('Air fryer'.replace('Air fryer', name))}.querySelector('.wl-prices'); const s=[...p.querySelectorAll('.wl-price-line')].find(l=>/menor preço/.test(l.textContent)); return s ? { txt: s.textContent, verde: !!s.querySelector('.wl-drop') } : null`);
+    let r = await resumo('Air fryer'); ok(r && /menor preço R\$ 329,90/.test(norm(r.txt)) && r.verde, 'abaixo do esperado: ' + JSON.stringify(r));
+    await openWl('Air fryer'); await registrar('Air fryer', 0, '400,00');   // agora o menor (369,90) está acima do esperado (349,90)
+    r = await resumo('Air fryer'); ok(r && /menor preço R\$ 369,90/.test(norm(r.txt)), 'acima do esperado continua aparecendo: ' + JSON.stringify(r)); eq(r.verde, false, 'sem destaque verde');
+    eq((await ev(`return window.CF.wishlist.priceDrops().count`)), 0, 'e não é queda de preço');
+    await ev(`const c=${wlCard('Air fryer')}; c.querySelectorAll('.wl-link-block')[1].querySelector('details.wl-hist').open=true; c.querySelectorAll('.wl-link-block')[1].querySelector('.wl-hist-row .wl-hist-del').click(); await new Promise(r=>setTimeout(r,250));`);
+    r = await resumo('Air fryer'); ok(r && /menor preço R\$ 400,00/.test(norm(r.txt)), 'só um link com preço: ' + JSON.stringify(r));
+    eq(await resumo('Liquidificador'), null, 'item sem link/preço não mostra menor preço');
+  });
+
   await test('o histórico persiste ao recarregar e o painel do histórico continua aberto depois de registrar outro preço', async () => {
     await openPage(); await goto('desejos'); await openWl('Air fryer');
     await ev(`const b=${wlCard('Air fryer')}.querySelectorAll('.wl-link-block')[0]; b.querySelector('details.wl-hist').open=true; b.querySelector('details.wl-hist').dispatchEvent(new Event('toggle'));`);

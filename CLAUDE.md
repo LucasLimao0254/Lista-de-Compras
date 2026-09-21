@@ -31,6 +31,10 @@ antigo) e sem fonte externa (a Inter está embutida em base64). Detalhes em `HAN
 - **Campos de texto com 16px no celular** (regra `@media (pointer: coarse)`), senão o iPhone dá zoom ao focar.
 - **Despesas mudam de mês sozinhas** (`applyMonthRollover`): pagas voltam a pendente, não pagas acumulam `unpaidMonths`.
   Qualquer novo fluxo que leia `paid` deve usar `monthsUnpaid()`/`isOverdue()` em vez de comparar só o dia.
+- **Lista de desejos: o preço do link é derivado do histórico.** Nunca escreva `link.price` direto: use `addEntry`/
+  `syncLink` (ordena o histórico por data e recalcula o preço atual). Registro em data anterior usa meio-dia local
+  (não vira o preço atual); data futura é recusada; hoje usa `Date.now()`. Não há leitura automática de preço
+  (Amazon/Mercado Livre/Magalu bloqueiam) — tudo é digitado pelo usuário.
 - **Modais** ganham foco, prisão de Tab e retorno de foco automaticamente (observador em `.overlay`); ao criar um modal novo,
   inclua-o na lista `modalOverlays` e dê `role="dialog"`, `aria-modal` e um nome.
 

@@ -3938,13 +3938,15 @@ function priceLine(label, value, valueCls) {
   return line;
 }
 
-// Resumo de preços do item (esperado / média / menor preço).
+// Resumo de preços do item (esperado / média / menor preço). O menor preço aparece sempre que há preço registrado;
+// fica verde só quando está abaixo do valor esperado (queda de preço).
 function fillPrices(container, it) {
   container.innerHTML = '';
   if (it.expectedPrice > 0) container.appendChild(priceLine('esperado', it.expectedPrice));
   const avg = averageOf(it);
   if (avg !== null) container.appendChild(priceLine('média dos links', avg, 'wl-avg'));
-  if (dropFor(it) > 0) container.appendChild(priceLine('menor preço', bestOf(it), 'wl-drop'));
+  const best = bestOf(it);
+  if (best !== null) container.appendChild(priceLine('menor preço', best, dropFor(it) > 0 ? 'wl-drop' : ''));
 }
 
 // Variação entre dois registros: ↓ baixou (bom), ↑ subiu, = igual
@@ -4024,7 +4026,7 @@ function renderLinkBlock(it, l) {
 
   // registrar um novo preço (hoje, ou uma data anterior para completar o histórico)
   const reg = el('div', 'wl-reg');
-  const pIn = el('input'); pIn.type = 'text'; pIn.inputMode = 'decimal'; pIn.placeholder = 'Novo preço'; pIn.autocomplete = 'off';
+  const pIn = el('input'); pIn.type = 'text'; pIn.inputMode = 'decimal'; pIn.placeholder = 'Preço'; pIn.autocomplete = 'off';
   pIn.setAttribute('aria-label', 'Novo preço anunciado neste link');
   const dIn = el('input'); dIn.type = 'date'; dIn.value = todayISO(); dIn.max = todayISO();
   dIn.setAttribute('aria-label', 'Data do preço');
@@ -4093,7 +4095,7 @@ function renderItem(it) {
     it.links.forEach(l => panel.appendChild(renderLinkBlock(it, l)));
 
     const add = el('div', 'wl-link-add');
-    const urlIn = el('input'); urlIn.type = 'text'; urlIn.inputMode = 'url'; urlIn.placeholder = 'Cole o link do anúncio…'; urlIn.autocomplete = 'off';
+    const urlIn = el('input'); urlIn.type = 'text'; urlIn.inputMode = 'url'; urlIn.placeholder = 'Link do anúncio'; urlIn.autocomplete = 'off';
     urlIn.setAttribute('aria-label', 'Link do anúncio');
     const priceIn = el('input'); priceIn.type = 'text'; priceIn.inputMode = 'decimal'; priceIn.placeholder = 'Preço'; priceIn.autocomplete = 'off';
     priceIn.setAttribute('aria-label', 'Preço anunciado (opcional)');

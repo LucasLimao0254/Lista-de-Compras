@@ -30,10 +30,16 @@ três controles separados por um só, com navegação por menu lateral:
    três": compara preço por quantidade entre produtos parecidos (ex: R$10/100ml
    vs R$8/750ml) e diz qual rende mais por litro/quilo/unidade.
 6. **Lista de Desejos** — itens que o usuário quer comprar, cada um com um **valor
-   esperado** e uma lista de **links de lojas online**, cada link com o seu preço.
-   Mostra a média dos preços dos links; quando o **menor** preço fica abaixo do valor
-   esperado, conta como "queda de preço" (aparece no sino e na Visão Geral). Só links
-   `http(s)` viram `<a>`; qualquer outro esquema (`javascript:` etc.) é exibido como texto.
+   esperado** e uma lista de **links dos anúncios**. O preço de cada link é **sempre
+   informado à mão** (o app não lê preço de site: Amazon, Mercado Livre e Magalu bloqueiam
+   leitura automática): ao criar o item ou adicionar um link o usuário digita o preço
+   listado, e depois pode **registrar um novo preço** (hoje, ou numa data anterior para
+   completar o histórico). Cada link guarda seu **histórico de preços** (data + valor, com
+   variação ↓/↑ e exclusão de registros); o preço atual é o registro mais recente.
+   O item mostra a **média** e o **menor preço** entre os preços atuais dos links que têm preço;
+   quando o menor fica abaixo do valor esperado (destacado em verde), conta como "queda de preço" (aparece no sino e na
+   Visão Geral). Só links `http(s)` viram `<a>`; qualquer outro esquema (`javascript:` etc.)
+   é exibido como texto.
 
 ## Arquitetura
 
@@ -89,8 +95,11 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
 ## Chaves de storage usadas
 
 - `cf-shopping-v1`, `cf-expenses-v1`, `cf-market-v1`, `cf-wishlist-v1` — dados atuais
-  de cada módulo. Desejos: `{ items: [{ id, name, expectedPrice, note, links: [{ id, url, price }] }] }`
-  (`price` 0 = link sem preço informado, ignorado na média e na queda de preço).
+  de cada módulo. Desejos: `{ items: [{ id, name, expectedPrice, note, links: [{ id, url, price, history: [{ id, t, price }] }] }] }`
+  (`t` = timestamp do registro; `history` fica ordenado por `t` e `price` é **derivado**: o preço do
+  último registro. `price` 0 / `history` vazio = link sem preço, ignorado na média e na queda de preço).
+  Links no formato antigo (só `price`, sem `history`) são convertidos no carregamento — o `price` vira o
+  primeiro registro — e o resultado é gravado na hora, para a data do registro não mudar a cada abertura.
 - Migração automática (uma vez só, na primeira carga de cada módulo se a chave
   nova estiver vazia): lista de compras busca em `lista-compras-v4`, despesas
   fixas busca em `despesas-fixas-v1` (chaves de apps standalone anteriores).
