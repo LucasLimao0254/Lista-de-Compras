@@ -100,8 +100,6 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
   último registro. `price` 0 / `history` vazio = link sem preço, ignorado na média e na queda de preço).
   Links no formato antigo (só `price`, sem `history`) são convertidos no carregamento — o `price` vira o
   primeiro registro — e o resultado é gravado na hora, para a data do registro não mudar a cada abertura.
-- `cf-push-v1` — avisos por push: `{ url, enabled, lead, hour }` (endereço do Worker, ligado/desligado, dias de antecedência 0–7,
-  hora do aviso). Não tem dado pessoal; a assinatura de push em si mora no navegador (`PushManager`), não no storage.
 - Migração automática (uma vez só, na primeira carga de cada módulo se a chave
   nova estiver vazia): lista de compras busca em `lista-compras-v4`, despesas
   fixas busca em `despesas-fixas-v1` (chaves de apps standalone anteriores).
@@ -150,26 +148,11 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
   estavam pendentes. "Reiniciar mês" e "Desmarcar tudo" (Compras) pedem confirmação.
 - Acessibilidade: modais com `role="dialog"`/`aria-modal`, foco que entra ao abrir, Tab preso dentro e retorno do foco ao
   fechar; menu lateral fechado fora da ordem de Tab; Esc fecha o item do topo (diálogo > modais > menu > sino).
-- **Avisos por push (Despesas → "Avisos por push")**: notificação no celular quando uma conta está perto de vencer, com o app
-  fechado. Precisa de um **Worker do Cloudflare criado pelo usuário** (`push-worker/`, passo a passo em `push-worker/LEIA-ME.md`):
-  o app (módulo `px-`) pede a permissão, cria a assinatura de push e manda ao Worker a lista de contas (nome, valor, dia, paga,
-  `cycle`, fuso, hora, antecedência) a cada mudança (debounce de 1,5 s), ao abrir, ao voltar para o app e quando a internet volta
-  (`CF.expenses.onChange` + `CF.expenses.snapshot`). O Worker roda de hora em hora (cron), avisa **uma vez por dia**, agrupado, depois
-  da hora escolhida, cifra o payload (RFC 8291) e assina com VAPID (RFC 8292) só com WebCrypto. O `service-worker.js` trata `push`
-  (sempre mostra uma notificação: iOS/Chrome punem push silencioso) e `notificationclick` (foca o app e manda `{cfOpenView}`; com o
-  app fechado abre `#despesas`). No iPhone só funciona com o app instalado na tela inicial e iOS 16.4+.
-  **A regra de "perto de vencer" existe em dois lugares:** `dueSoonDays` (app, sino) e `dueBills` (`push-worker/worker.mjs`, que
-  também cobre a virada do mês com o app fechado e o vencimento logo após a virada). Ao mudar uma, mude a outra e os testes.
 
 ## Limitações conhecidas (decisões deliberadas, não bugs)
 
 - Sem backend: tudo roda local no navegador (`localStorage`/`window.storage`).
-  Nenhum dado é compartilhado entre dispositivos. **Única exceção, opcional:** se o usuário ativar os avisos por push, o nome, o valor
-  e o dia de vencimento das contas vão para o Worker dele no Cloudflare (dito na tela e em `push-worker/LEIA-ME.md`).
-- Push: o app **não** avisa nada sozinho com ele fechado (um PWA sem servidor não pode); sem o Worker só existe o sino dentro do app.
-  Validado com um serviço de push real só no Edge/WNS (o código do Worker enviou teste e aviso agrupado e o navegador decifrou);
-  Google/FCM, Apple/iPhone e a implantação no Cloudflare não foram testados aqui. O resto: criptografia/assinatura contra as RFCs e o
-  fluxo do app com tudo simulado. O botão "Enviar aviso de teste" é como o usuário confere no aparelho dele.
+  Nenhum dado é compartilhado entre dispositivos.
 - Duas compras no mesmo dia, na mesma loja, são tratadas como uma "ida ao
   mercado" só (agrupamento é por `data+loja`) — herdado do app original.
 - A correspondência de preço da Lista de Compras é aproximada (substring), não
@@ -200,7 +183,7 @@ Se o usuário pedir para continuar dessas ideias (já validadas com ele antes):
 2. Validar sintaxe: extrair os `<script>` sem atributos (ver aviso acima) e
    rodar `node --check` em cada um.
 3. Checar IDs duplicados no HTML inteiro.
-3b. Rodar `npm test` (ver `tests/e2e.js`; roda antes `tests/push-worker.test.mjs` e `tests/service-worker.test.mjs`, Node puro): verificações de ponta a ponta com dados fictícios, fuso
+3b. Rodar `npm test` (ver `tests/e2e.js`): verificações de ponta a ponta com dados fictícios, fuso
    America/Sao_Paulo e data fixa (inclui fuso à noite, arrastar e soltar, Esc nos modais e PWA offline). Ao mudar comportamento, acrescente o teste correspondente; e, para ter certeza de que
    um teste novo realmente pega o defeito, rode-o contra uma cópia quebrada com `TEST_INDEX=copia.html`.
    Observação: o GitHub Pages publica a raiz inteira, então `tests/` também vai ao ar (só tem dados fictícios).

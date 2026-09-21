@@ -2,7 +2,3 @@
 *.json
 !manifest.json
 !package.json
-# Worker de push: estado local do wrangler e segredos de desenvolvimento
-.wrangler/
-.dev.vars
-node_modules/

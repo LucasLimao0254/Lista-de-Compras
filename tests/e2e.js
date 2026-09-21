@@ -11,7 +11,6 @@
  * Variáveis opcionais:
  *   CHROME_PATH   caminho do navegador (senão procura Edge/Chrome/Chromium nos lugares comuns)
  *   TEST_INDEX    usa outro HTML no lugar do index.html (serve para "testar o teste" com uma cópia quebrada)
- *   TEST_FILTER   expressão regular: roda só os testes cujo nome casar (ex.: TEST_FILTER="^push:"; os demais são pulados sem contar)
  */
 'use strict';
 const { spawn } = require('child_process');
@@ -74,51 +73,6 @@ const SEED = `(function(){
     {id:'w2',name:'Liquidificador',expectedPrice:189.9,note:'',links:[]} ] }));
 })();`;
 
-/* Simula, dentro da página, o que o navegador e o Worker de avisos fazem: permissão de notificação, PushManager,
-   a assinatura de push e as respostas do Worker (https://avisos.exemplo.workers.dev). Nada sai para a internet.
-   window.__push guarda o que o app pediu (calls, requested, subscribeCount…) e permite forçar cenários (reply, offline, requestResult).
-   Permissão e assinatura sobrevivem a um reload (sessionStorage), como no navegador de verdade. */
-const PUSH_STUB = `(function(){
-  var S = {}; try { S = JSON.parse(sessionStorage.getItem('__push') || '{}'); } catch (e) {}
-  var st = window.__push = { calls: [], permission: S.permission || 'default', requestResult: S.requestResult || 'granted', hasSub: !!S.hasSub,
-    requested: 0, subscribeCount: 0, unsubscribed: 0, reply: {}, offline: false, lastKey: null, vapidKey: null, sub: null };
-  function save() { try { sessionStorage.setItem('__push', JSON.stringify({ permission: st.permission, requestResult: st.requestResult, hasSub: st.hasSub })); } catch (e) {} }
-  function bytes(b) { var s = b.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; var bin = atob(s), o = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) o[i] = bin.charCodeAt(i); return o; }
-  var DEFAULT_KEY = 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8';
-  function makeSub(key) {
-    return { endpoint: 'https://fcm.googleapis.com/fcm/send/aparelho-de-teste', options: { applicationServerKey: key.buffer.slice(0) },
-      toJSON: function () { return { endpoint: this.endpoint, keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } }; },
-      unsubscribe: function () { st.unsubscribed++; st.hasSub = false; st.sub = null; save(); return Promise.resolve(true); } };
-  }
-  if (st.hasSub) st.sub = makeSub(bytes(DEFAULT_KEY));
-
-  function N() {}
-  Object.defineProperty(N, 'permission', { get: function () { return st.permission; } });
-  N.requestPermission = function () { st.requested++; if (st.requestResult === 'granted' || st.requestResult === 'denied') st.permission = st.requestResult; save(); return Promise.resolve(st.requestResult); };
-  window.Notification = N;
-  if (window.__pushUnsupported) { try { delete window.PushManager; } catch (e) {} }
-  else if (!('PushManager' in window)) window.PushManager = function () {};
-
-  var pm = {
-    getSubscription: function () { return Promise.resolve(st.sub || null); },
-    subscribe: function (o) { st.subscribeCount++; st.lastKey = Array.prototype.slice.call(new Uint8Array(o.applicationServerKey)); st.lastUserVisibleOnly = o.userVisibleOnly;
-      st.sub = makeSub(new Uint8Array(o.applicationServerKey)); st.hasSub = true; save(); return Promise.resolve(st.sub); }
-  };
-  if (window.ServiceWorkerRegistration) Object.defineProperty(ServiceWorkerRegistration.prototype, 'pushManager', { get: function () { return pm; }, configurable: true });
-
-  var realFetch = window.fetch.bind(window), WORKER = 'https://avisos.exemplo.workers.dev';
-  window.fetch = function (url, init) {
-    url = String(url);
-    if (url.indexOf(WORKER) !== 0) return realFetch(url, init);
-    var path = url.slice(WORKER.length) || '/';
-    st.calls.push({ path: path, method: (init && init.method) || 'GET', body: init && init.body ? JSON.parse(init.body) : null });
-    if (st.offline) return Promise.reject(new TypeError('Failed to fetch'));
-    var r = st.reply[path];
-    var payload = (r && r.body) || (path === '/vapid' ? { publicKey: st.vapidKey || DEFAULT_KEY } : { ok: true });
-    return Promise.resolve(new Response(JSON.stringify(payload), { status: (r && r.status) || 200, headers: { 'Content-Type': 'application/json' } }));
-  };
-})();`;
-
 /* ------------------------------------------------------------------ cliente DevTools */
 async function launch(port) {
   const exe = findBrowser();
@@ -161,25 +115,21 @@ async function launch(port) {
   await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
 
   let scriptIds = [];
-  async function openPage({ seed = true, width = 390, height = 844, now = DEFAULT_NOW, tz = 'America/Sao_Paulo', stubs = [], hash = '' } = {}) {
+  async function openPage({ seed = true, width = 390, height = 844, now = DEFAULT_NOW, tz = 'America/Sao_Paulo' } = {}) {
     for (const s of scriptIds) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: s });
     scriptIds = [];
-    // navegar para a MESMA página só mudando o #fragmento não recarrega nem dispara o evento de load: passa antes por about:blank (sem os scripts de teste registrados)
-    if (hash) { const blank = new Promise(r => loadWaiter = r); await send('Page.navigate', { url: 'about:blank' }); await blank; }
     await send('Storage.clearDataForOrigin', { origin: BASE.replace(/\/$/, ''), storageTypes: 'all' });
-    await send('Runtime.evaluate', { expression: 'try { sessionStorage.clear() } catch (e) {}' });   // o estado do stub de push vive no sessionStorage
     await send('Emulation.setTimezoneOverride', { timezoneId: tz });
     await send('Emulation.setTouchEmulationEnabled', { enabled: width < 700, maxTouchPoints: 5 });
     scriptIds.push((await send('Page.addScriptToEvaluateOnNewDocument', { source: dateMock(now) })).result.identifier);
     if (seed) scriptIds.push((await send('Page.addScriptToEvaluateOnNewDocument', { source: SEED })).result.identifier);
-    for (const src of stubs) scriptIds.push((await send('Page.addScriptToEvaluateOnNewDocument', { source: src })).result.identifier);
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 700 });
-    await reload(true, hash);
+    await reload(true);
   }
-  async function reload(navigate, hash = '') {
+  async function reload(navigate) {
     const loaded = new Promise(r => loadWaiter = r);
-    await send(navigate ? 'Page.navigate' : 'Page.reload', navigate ? { url: BASE + hash } : {});
-    await withTimeout(loaded, 20000, 'esperando a página carregar');
+    await send(navigate ? 'Page.navigate' : 'Page.reload', navigate ? { url: BASE } : {});
+    await loaded;
     await waitFor("window.CF && window.CF.refreshAlerts && window.CF.wishlist && window.CF.wishlist.priceDrops");
     await sleep(350);
   }
@@ -188,7 +138,6 @@ async function launch(port) {
   /* ---------------------------------------------------------------- runner */
   let pass = 0, fail = 0; const failures = [];
   async function test(name, fn) {
-    if (process.env.TEST_FILTER && !new RegExp(process.env.TEST_FILTER).test(name)) return;   // roda só alguns testes (ex.: TEST_FILTER="^push:")
     try { await fn(); pass++; console.log('  ok     ' + name); }
     catch (e) { fail++; failures.push(name); console.log('  FALHA  ' + name + '\n         ' + String(e.message).split('\n')[0]); }
   }
@@ -712,171 +661,6 @@ async function launch(port) {
       document.getElementById('sc-resetBtn').click(); await w(); document.getElementById('app-dialog-ok').click(); await w(); const cConfirmar=marc();
       return { aberto1, depoisCancelar, depoisConfirmar, aberto2, cCancelar, cConfirmar }`);
     eq(r, { aberto1: true, depoisCancelar: 3, depoisConfirmar: 0, aberto2: true, cCancelar: 2, cConfirmar: 0 });
-  });
-
-  /* ================================================================ 8b. Avisos por push (conta perto de vencer) */
-  group('Avisos por push (conta perto de vencer)');
-  const WURL = 'https://avisos.exemplo.workers.dev';
-  const pushCalls = () => ev('return window.__push.calls');
-  const pushPaths = async () => (await pushCalls()).map(c => c.method + ' ' + c.path);
-  const pushSyncs = async () => (await pushCalls()).filter(c => c.path === '/subscribe');
-  const pxStatus = async () => norm(await ev(`return document.getElementById('px-status').textContent`));
-  const pxToggle = async () => norm(await ev(`return document.getElementById('px-toggle').textContent`));
-  const openPush = async (opts) => { await openPage(Object.assign({ stubs: [PUSH_STUB] }, opts)); await goto('despesas'); await ev(`document.getElementById('px-card').open = true; return 1`); };
-  const typeUrl = v => ev(`const u=document.getElementById('px-url'); u.value=${JSON.stringify(v)}; u.dispatchEvent(new Event('input',{bubbles:true})); return 1`);
-  const clickToggle = () => ev(`document.getElementById('px-toggle').click(); return 1`);
-  const settle = () => sleep(400);
-  const enablePush = async (url = WURL + '/') => {
-    await typeUrl(url); await clickToggle();
-    await waitFor(`/Desativar/.test(document.getElementById('px-toggle').textContent) || /negad|Não consegui|recusou|não aceita|não suporta|Cole o endereço/i.test(document.getElementById('px-status').textContent)`);
-  };
-
-  await test('push: o cartão fica em Despesas, começa desativado e diz o que o Worker guarda', async () => {
-    await openPush();
-    const r = await ev(`const c=document.getElementById('px-card'); return { inDespesas: !!c.closest('#view-despesas'), badge: document.getElementById('px-badge').textContent, note: document.getElementById('px-note').textContent, testOff: document.getElementById('px-test').disabled }`);
-    ok(r.inDespesas, 'cartão fora da tela de Despesas'); eq(norm(r.badge), 'desativado'); eq(await pxToggle(), 'Ativar avisos'); ok(r.testOff, 'o teste só faz sentido com os avisos ativos');
-    ok(/nome/.test(r.note) && /valor/.test(r.note) && /dia/.test(r.note) && /iOS 16\.4/.test(r.note) && /tela inicial/i.test(r.note), 'a nota deve dizer o que é enviado e o requisito do iPhone: ' + norm(r.note));
-    eq(await pxStatus() !== '', true, 'status inicial');
-  });
-  await test('push: campos com nome acessível e status anunciado por leitor de tela', async () => {
-    const r = await ev(`const g=id=>document.getElementById(id); return { url: g('px-url').labels.length, lead: g('px-lead').labels.length, hour: g('px-hour').labels.length, live: g('px-status').getAttribute('aria-live'), role: g('px-status').getAttribute('role') }`);
-    eq(r, { url: 1, lead: 1, hour: 1, live: 'polite', role: 'status' });
-  });
-  await test('push: endereço vazio ou inválido não pede permissão nem chama o Worker', async () => {
-    for (const bad of ['', 'abc', 'http://exemplo.com', 'javascript:alert(1)', 'ftp://x.y']) {
-      await openPush(); await typeUrl(bad); await clickToggle(); await settle();
-      const r = await ev(`return { requested: window.__push.requested, calls: window.__push.calls.length }`);
-      eq(r, { requested: 0, calls: 0 }, JSON.stringify(bad)); ok(/https:\/\//.test(await pxStatus()), 'deve explicar o formato: ' + await pxStatus());
-    }
-  });
-  await test('push: ativar = permissão, chave VAPID, assinatura e envio das contas (só as que têm dia de vencimento)', async () => {
-    await openPush(); await enablePush();
-    eq(await pushPaths(), ['GET /vapid', 'POST /subscribe']);
-    const r = await ev(`return { requested: window.__push.requested, subs: window.__push.subscribeCount, key: window.__push.lastKey, uvo: window.__push.lastUserVisibleOnly, snap: window.CF.expenses.snapshot() }`);
-    eq([r.requested, r.subs, r.key.length, r.key[0], r.uvo], [1, 1, 65, 4, true]);
-    const body = (await pushSyncs())[0].body;
-    eq(body.subscription.endpoint, 'https://fcm.googleapis.com/fcm/send/aparelho-de-teste'); ok(body.subscription.keys.p256dh && body.subscription.keys.auth, 'chaves da assinatura');
-    eq([body.cycle, body.tz, body.hour, body.leadDays], ['2026-09', 'America/Sao_Paulo', 8, 3]);
-    eq(body.bills, r.snap.bills); ok(body.bills.length >= 8 && body.bills.every(b => b.dueDay >= 1 && b.dueDay <= 31 && b.name && typeof b.amount === 'number'), 'contas: ' + JSON.stringify(body.bills));
-    const al = body.bills.find(b => b.name === 'Aluguel'), co = body.bills.find(b => b.name === 'Condomínio');
-    eq([al.paid, al.dueDay, co.paid, co.dueDay], [true, 5, false, 10]);
-    eq(await pxToggle(), 'Desativar avisos'); eq(norm(await ev(`return document.getElementById('px-badge').textContent`)), 'ativado');
-    const s = await pxStatus(); ok(/Ativado/.test(s) && /8h/.test(s) && /3 dias antes/.test(s), s);
-    const st = JSON.parse(await ev(`return localStorage.getItem('cf-push-v1')`)); eq([st.enabled, st.url], [true, WURL]);
-    ok(await ev(`return document.getElementById('px-test').disabled === false`), 'teste habilitado');
-  });
-  await test('push: ao reabrir o app continua ativado e reenvia as contas sozinho, sem pedir permissão de novo', async () => {
-    await reload(false); await goto('despesas'); await ev(`document.getElementById('px-card').open = true; return 1`);
-    await waitFor(`window.__push.calls.some(c => c.path === '/subscribe')`);
-    eq(await ev(`return window.__push.requested`), 0); eq(await pxToggle(), 'Desativar avisos'); ok(/Ativado/.test(await pxStatus()), await pxStatus());
-    eq((await pushPaths()).includes('GET /vapid'), false, 'com assinatura já existente não precisa buscar a chave de novo');
-  });
-  await test('push: marcar como paga / adicionar conta reenvia a lista (uma vez só, mesmo com várias mudanças seguidas)', async () => {
-    const before = (await pushSyncs()).length;
-    await ev(`const li=[...document.querySelectorAll('#ex-sections li')].find(l=>/Condomínio/.test(l.textContent)); li.querySelector('.box').click(); await new Promise(r=>setTimeout(r,200));
-      const li2=[...document.querySelectorAll('#ex-sections li')].find(l=>/Internet/.test(l.textContent)); li2.querySelector('.box').click(); return 1`);
-    await waitFor(`window.__push.calls.filter(c => c.path === '/subscribe').length > ${before}`, 5000); await sleep(2200);
-    const syncs = await pushSyncs(); eq(syncs.length, before + 1, 'duas marcações seguidas devem virar um só envio');
-    const b = syncs[syncs.length - 1].body.bills; eq([b.find(x => x.name === 'Condomínio').paid, b.find(x => x.name === 'Internet').paid], [true, true]);
-    await ev(`document.getElementById('ex-newToggle').click(); document.getElementById('ex-newNameInput').value='Academia'; document.getElementById('ex-newAmountInput').value='89,90'; document.getElementById('ex-newDayInput').value='17'; document.getElementById('ex-addBtn').click(); return 1`);
-    await waitFor(`window.__push.calls.filter(c => c.path === '/subscribe').length > ${before + 1}`, 5000);
-    const last = (await pushSyncs()).pop().body.bills.find(x => x.name === 'Academia'); eq([last.amount, last.dueDay, last.paid], [89.9, 17, false]);
-  });
-  await test('push: mudar a antecedência e o horário reenvia e persiste', async () => {
-    const before = (await pushSyncs()).length;
-    await ev(`const l=document.getElementById('px-lead'); l.value='5'; l.dispatchEvent(new Event('change',{bubbles:true})); return 1`);
-    await waitFor(`window.__push.calls.filter(c => c.path === '/subscribe').length > ${before}`, 5000);
-    let body = (await pushSyncs()).pop().body; eq([body.leadDays, body.hour], [5, 8], 'só a antecedência mudou');
-    await sleep(500);
-    const mid = (await pushSyncs()).length;   // o horário sozinho também tem de ser enviado
-    await ev(`const h=document.getElementById('px-hour'); h.value='20'; h.dispatchEvent(new Event('change',{bubbles:true})); return 1`);
-    await waitFor(`window.__push.calls.filter(c => c.path === '/subscribe').length > ${mid}`, 5000);
-    body = (await pushSyncs()).pop().body; eq([body.leadDays, body.hour], [5, 20]);
-    await reload(false); await goto('despesas'); await ev(`document.getElementById('px-card').open = true; return 1`);
-    eq(await ev(`return [document.getElementById('px-lead').value, document.getElementById('px-hour').value]`), ['5', '20']);
-    const s = await pxStatus(); ok(/20h/.test(s) && /5 dias antes/.test(s), s);
-  });
-  await test('push: "Enviar aviso de teste" chama o Worker; se o serviço de push recusar, o motivo aparece', async () => {
-    await ev(`document.getElementById('px-test').click(); return 1`); await waitFor(`window.__push.calls.some(c => c.path === '/test')`);
-    const t = (await pushCalls()).find(c => c.path === '/test'); eq(t.body.subscription.endpoint, 'https://fcm.googleapis.com/fcm/send/aparelho-de-teste');
-    await waitFor(`/teste/i.test(document.getElementById('px-status').textContent) && /enviado/i.test(document.getElementById('px-status').textContent)`);
-    await ev(`window.__push.reply['/test'] = { status: 502, body: { ok: false, status: 403, error: 'O serviço de push recusou o envio (HTTP 403).' } }; document.getElementById('px-test').click(); return 1`);
-    await waitFor(`/recusou/.test(document.getElementById('px-status').textContent)`); ok(/403/.test(await pxStatus()), await pxStatus());
-  });
-  await test('push: permissão de notificação negada explica como liberar e não deixa "ativado pela metade"', async () => {
-    await openPush(); await ev(`window.__push.requestResult = 'denied'; return 1`); await enablePush();
-    eq(await pushPaths(), [], 'sem permissão não há chamada ao Worker'); ok(/negad/i.test(await pxStatus()) && /ajustes|configura/i.test(await pxStatus()), await pxStatus());
-    eq(await pxToggle(), 'Ativar avisos'); eq(JSON.parse(await ev(`return localStorage.getItem('cf-push-v1') || '{"enabled":false}'`)).enabled, false);
-  });
-  await test('push: Worker fora do ar, endereço errado ou origem não permitida: mensagem clara e nada de assinatura criada', async () => {
-    const casos = [
-      [`window.__push.offline = true`, /Não consegui falar com o Worker/],
-      [`window.__push.reply['/vapid'] = { status: 404, body: { error: 'não encontrado' } }`, /Não consegui falar com o Worker|não encontrado/],
-      [`window.__push.reply['/vapid'] = { status: 403, body: { error: 'origem não permitida' } }`, /não aceita este site|ALLOWED_ORIGINS/],
-    ];
-    for (const [setup, re] of casos) {
-      await openPush(); await ev(setup + '; return 1'); await enablePush();
-      ok(re.test(await pxStatus()), setup + ' -> ' + await pxStatus()); eq(await pxToggle(), 'Ativar avisos');
-      eq(await ev(`return window.__push.subscribeCount`), 0, 'não pode criar assinatura se o Worker não respondeu');
-    }
-  });
-  await test('push: se o Worker recusar o envio das contas, o app mostra o erro e não fica "ativado"', async () => {
-    await openPush(); await ev(`window.__push.reply['/subscribe'] = { status: 400, body: { error: 'dados inválidos' } }; return 1`); await enablePush();
-    ok(/dados inválidos/.test(await pxStatus()), await pxStatus()); eq(await pxToggle(), 'Ativar avisos');
-    eq(JSON.parse(await ev(`return localStorage.getItem('cf-push-v1') || '{"enabled":false}'`)).enabled, false);
-  });
-  await test('push: se a chave do Worker mudou, a assinatura antiga é trocada pela nova', async () => {
-    await openPush(); await ev(`sessionStorage.setItem('__push', JSON.stringify({ hasSub: true, permission: 'granted' })); return 1`); await reload(false); await goto('despesas'); await ev(`document.getElementById('px-card').open = true; return 1`);
-    const ec = require('crypto').createECDH('prime256v1'); ec.generateKeys(); const novaChave = ec.getPublicKey().toString('base64url');
-    await ev(`window.__push.vapidKey = ${JSON.stringify(novaChave)}; return 1`); await enablePush();
-    const r = await ev(`return { unsub: window.__push.unsubscribed, subs: window.__push.subscribeCount, key: window.__push.lastKey }`);
-    eq([r.unsub, r.subs], [1, 1]); eq(Buffer.from(r.key).toString('base64url'), novaChave);
-  });
-  await test('push: botão bloqueado enquanto trabalha (dois cliques seguidos = uma ativação só)', async () => {
-    await openPush(); await typeUrl(WURL); await ev(`const b=document.getElementById('px-toggle'); b.click(); b.click(); return 1`);
-    await waitFor(`/Desativar/.test(document.getElementById('px-toggle').textContent)`);
-    eq(await ev(`return [window.__push.requested, window.__push.subscribeCount]`), [1, 1]); eq((await pushSyncs()).length, 1);
-  });
-  await test('push: sem conexão ao atualizar as contas avisa e tenta de novo quando o app volta a ficar visível', async () => {
-    await ev(`window.__push.offline = true; const li=[...document.querySelectorAll('#ex-sections li')].find(l=>/Água/.test(l.textContent)); li.querySelector('.box').click(); return 1`);
-    await waitFor(`/sem conexão|Não consegui atualizar/i.test(document.getElementById('px-status').textContent)`, 6000);
-    eq(await pxToggle(), 'Desativar avisos', 'continua ativado, só não conseguiu atualizar agora');
-    const before = (await pushSyncs()).length;
-    await ev(`window.__push.offline = false; document.dispatchEvent(new Event('visibilitychange')); return 1`);
-    await waitFor(`window.__push.calls.filter(c => c.path === '/subscribe').length > ${before}`, 6000);
-    await waitFor(`!/sem conexão|Não consegui atualizar/i.test(document.getElementById('px-status').textContent)`);
-    const b = (await pushSyncs()).pop().body.bills.find(x => x.name === 'Água e esgoto'); eq(b.paid, true);
-  });
-  await test('push: desativar cancela no Worker e no aparelho e o app para de mandar mudanças', async () => {
-    await clickToggle(); await waitFor(`/Ativar avisos/.test(document.getElementById('px-toggle').textContent)`);
-    const paths = await pushPaths(); ok(paths.includes('POST /unsubscribe'), paths.join(','));
-    eq(await ev(`return [window.__push.unsubscribed, window.__push.hasSub]`), [1, false]);
-    eq(JSON.parse(await ev(`return localStorage.getItem('cf-push-v1')`)).enabled, false); ok(await ev(`return document.getElementById('px-test').disabled`), 'teste desabilitado');
-    const before = (await pushSyncs()).length;
-    await ev(`const li=[...document.querySelectorAll('#ex-sections li')].find(l=>/Streaming/.test(l.textContent)); li.querySelector('.box').click(); return 1`); await sleep(2500);
-    eq((await pushSyncs()).length, before, 'desativado: nenhuma mudança vai para o Worker');
-  });
-  await test('push: navegador sem suporte (iPhone fora do app instalado, Safari antigo) explica o que fazer e não quebra', async () => {
-    await openPage({ stubs: ['window.__pushUnsupported = 1;', PUSH_STUB] }); await goto('despesas'); await ev(`document.getElementById('px-card').open = true; return 1`);
-    ok(/não suporta|não tem suporte/i.test(await pxStatus()) && /tela inicial/i.test(await pxStatus()), await pxStatus());
-    eq(await ev(`return [document.getElementById('px-toggle').disabled, document.getElementById('px-test').disabled]`), [true, true]);
-  });
-  await test('push: clicar na notificação abre Despesas (mensagem do service worker e #despesas na URL); destino desconhecido é ignorado', async () => {
-    await openPage(); eq(await ev(`return document.getElementById('pageTitle').textContent`), 'Visão geral');
-    for (const bad of [{ cfOpenView: 'naoexiste' }, { cfOpenView: 42 }, 'texto', null, { outra: 1 }]) { await ev(`navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(bad)} })); return 1`); await sleep(100); }
-    eq(await ev(`return document.getElementById('pageTitle').textContent`), 'Visão geral');
-    eq(await ev(`return [...document.querySelectorAll('.view.active')].map(v => v.id)`), ['view-overview'], 'mensagem inválida não pode esvaziar nem trocar a tela');
-    await ev(`navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { cfOpenView: 'despesas' } })); return 1`); await sleep(150);
-    eq(await ev(`return document.getElementById('pageTitle').textContent`), 'Despesas fixas');
-    eq(await ev(`return [...document.querySelectorAll('.view.active')].map(v => v.id)`), ['view-despesas']);
-    await openPage({ hash: '#despesas' }); eq(await ev(`return document.getElementById('pageTitle').textContent`), 'Despesas fixas');
-    await openPage({ hash: '#naoexiste' }); eq(await ev(`return document.getElementById('pageTitle').textContent`), 'Visão geral');
-  });
-  await test('push: o cartão aberto cabe em 320 px de largura, sem rolagem horizontal', async () => {
-    await openPush({ width: 320 });
-    const w = await ev(`return [document.documentElement.scrollWidth, window.innerWidth]`); ok(w[0] <= w[1], 'rolagem horizontal: ' + w);
-    const campos = await ev(`return ['px-url','px-lead','px-hour','px-toggle','px-test'].map(i => { const r=document.getElementById(i).getBoundingClientRect(); return r.right <= window.innerWidth + 0.5 && r.width > 40 })`); eq(campos, [true, true, true, true, true]);
-    eq(await ev(`return parseFloat(getComputedStyle(document.getElementById('px-url')).fontSize)`), 16, 'no celular o campo tem 16px (senão o iPhone dá zoom)');
   });
 
   /* ================================================================ 9. PWA offline (por último: derruba o servidor) */
