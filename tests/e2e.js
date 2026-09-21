@@ -225,7 +225,7 @@ async function launch(port) {
   });
   await test('link https vira <a target=_blank rel=noopener>; "javascript:" fica só como texto', async () => {
     const r = await ev(`document.getElementById('wl-toggleForm').click(); document.getElementById('wl-name').value='Monitor'; document.getElementById('wl-price').value='1299,90'; document.getElementById('wl-addLinkField').click();
-      const ins=document.querySelectorAll('#wl-linkFields input'); ins[0].value='https://loja.exemplo/monitor'; ins[0].dispatchEvent(new Event('input',{bubbles:true})); ins[1].value='javascript:alert(1)'; ins[1].dispatchEvent(new Event('input',{bubbles:true}));
+      const ins=document.querySelectorAll('#wl-linkFields input'); ins[0].value='https://loja.exemplo/monitor'; ins[0].dispatchEvent(new Event('input',{bubbles:true})); ins[2].value='javascript:alert(1)'; ins[2].dispatchEvent(new Event('input',{bubbles:true}));
       document.getElementById('wl-submit').click(); await new Promise(r=>setTimeout(r,200));
       const card=[...document.querySelectorAll('#wl-list .wl-item')].find(c=>c.textContent.includes('Monitor')); card.querySelector('.wl-toggle-links').click(); await new Promise(r=>setTimeout(r,150));
       const c2=[...document.querySelectorAll('#wl-list .wl-item')].find(c=>c.textContent.includes('Monitor'));
@@ -235,7 +235,7 @@ async function launch(port) {
   });
   await test('preço de um link abaixo do esperado vira queda de preço e atualiza o sino', async () => {
     const r = await ev(`const before=window.CF.wishlist.priceDrops().count; const c=[...document.querySelectorAll('#wl-list .wl-item')].find(c=>c.textContent.includes('Monitor'));
-      const p=c.querySelector('.wl-link-price'); p.value='1.199,00'; p.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,250));
+      const b=c.querySelectorAll('.wl-link-block')[0]; const ins=b.querySelectorAll('.wl-reg input'); ins[0].value='1.199,00'; b.querySelector('.wl-reg button').click(); await new Promise(r=>setTimeout(r,250));
       return { before, after: window.CF.wishlist.priceDrops(), bell: document.getElementById('notifPanel').innerText, stored: JSON.parse(localStorage.getItem('cf-wishlist-v1')).items.find(i=>i.name==='Monitor').links[0].price }`);
     eq([r.before, r.after.count, r.stored], [1, 2, 1199]); near(r.after.total, 20 + 100.9, 0.001, 'economia total');
     ok(/2 itens da lista de desejos caíram de preço/.test(norm(r.bell)), 'texto do sino: ' + norm(r.bell));
@@ -446,13 +446,109 @@ async function launch(port) {
     eq(bad, []);
   });
 
-  await test('desejos: editar o preço de um link não redesenha a lista (o foco continua onde o usuário está)', async () => {
+  /* ---- Lista de desejos: histórico de preços MANUAL (o usuário informa o preço anunciado de cada link) ---- */
+  const wlCard = name => `[...document.querySelectorAll('#wl-list .wl-item')].find(c=>c.querySelector('.wl-item-name').textContent===${JSON.stringify(name)})`;
+  const openWl = name => ev(`const c=${wlCard(name)}; if(!c.querySelector('.wl-link-block')) c.querySelector('.wl-toggle-links').click(); await new Promise(r=>setTimeout(r,120));`);
+  const registrar = (name, k, preco, data) => ev(`const c=${wlCard(name)}; const b=c.querySelectorAll('.wl-link-block')[${k}]; const ins=b.querySelectorAll('.wl-reg input'); ins[0].value=${JSON.stringify(preco)}; if(${JSON.stringify(data || '')}) ins[1].value=${JSON.stringify(data || '')}; b.querySelector('.wl-reg button').click(); await new Promise(r=>setTimeout(r,250));`);
+  const histOf = (name, k) => ev(`const it=JSON.parse(localStorage.getItem('cf-wishlist-v1')).items.find(i=>i.name===${JSON.stringify(name)}); const l=it.links[${k}]; return { price:l.price, hist:l.history.map(e=>e.price) }`);
+  const blockInfo = (name, k) => ev(`return ${wlCard(name)}.querySelectorAll('.wl-link-block')[${k}].querySelector('.wl-link-info').textContent`);
+
+  await test('histórico manual: no formulário cada link recebe o preço anunciado; vira o 1º registro e o app calcula a média entre os links', async () => {
     await openPage(); await goto('desejos');
-    const r = await ev(`document.querySelector('#wl-list .wl-toggle-links').click(); await new Promise(r=>setTimeout(r,150));
-      const card=document.querySelector('#wl-list .wl-item'); const [a,b]=card.querySelectorAll('.wl-link-price'); a.focus(); a.value='300,00'; b.focus(); a.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,250));
-      return { foco: document.activeElement===b, mesmoCartao: document.body.contains(card), preco: JSON.parse(localStorage.getItem('cf-wishlist-v1')).items[0].links[0].price, resumo: card.querySelector('.wl-prices').textContent, campo: a.value }`);
-    ok(r.foco && r.mesmoCartao, 'a lista foi redesenhada e o foco se perdeu');
-    eq(r.preco, 300); ok(/menor preço R\$ 300,00/.test(norm(r.resumo)), 'resumo de preços não atualizou: ' + norm(r.resumo)); eq(r.campo, '300,00', 'valor exibido no campo');
+    const r = await ev(`document.getElementById('wl-toggleForm').click(); document.getElementById('wl-name').value='Notebook'; document.getElementById('wl-price').value='3000';
+      document.getElementById('wl-addLinkField').click(); document.getElementById('wl-addLinkField').click();
+      const rows=[...document.querySelectorAll('#wl-linkFields .wl-link-row')]; const dados=[['https://loja-a.exemplo/nb','3200,00'],['https://loja-b.exemplo/nb','R$ 2.900,00'],['https://loja-c.exemplo/nb','']];
+      rows.forEach((row,k)=>{ const [u,p]=row.querySelectorAll('input'); u.value=dados[k][0]; u.dispatchEvent(new Event('input',{bubbles:true})); p.value=dados[k][1]; p.dispatchEvent(new Event('input',{bubbles:true})); });
+      const campos=rows.map(r=>r.querySelectorAll('input').length);
+      document.getElementById('wl-submit').click(); await new Promise(r=>setTimeout(r,250));
+      const it=JSON.parse(localStorage.getItem('cf-wishlist-v1')).items.find(i=>i.name==='Notebook'); const card=${wlCard('Notebook')};
+      return { campos, links: it.links.map(l=>[l.price, l.history.length]), resumo: card.querySelector('.wl-prices').textContent }`);
+    eq(r.campos, [2, 2, 2], 'cada linha do formulário tem link + preço'); eq(r.links, [[3200, 1], [2900, 1], [0, 0]]);
+    ok(/média dos links R\$ 3\.050,00/.test(norm(r.resumo)) && /menor preço R\$ 2\.900,00/.test(norm(r.resumo)), 'resumo: ' + norm(r.resumo));
+  });
+
+  await test('registrar um novo preço num link: entra no histórico, atualiza o preço atual e a média, e mostra a variação (↓/↑) e a data', async () => {
+    await openPage(); await goto('desejos'); await openWl('Air fryer');
+    await registrar('Air fryer', 0, '300,00');
+    let h = await histOf('Air fryer', 0); eq([h.price, h.hist], [300, [329.9, 300]]);
+    const r = await ev(`const c=${wlCard('Air fryer')}; const b=c.querySelectorAll('.wl-link-block')[0]; return { info: b.querySelector('.wl-link-info').textContent, trend: (b.querySelector('.wl-trend')||{}).className, resumo: c.querySelector('.wl-prices').textContent, campo: b.querySelector('.wl-reg input').value }`);
+    ok(/R\$ 300,00/.test(norm(r.info)) && /registrado em 15\/09/.test(norm(r.info)), 'linha: ' + norm(r.info)); ok(/↓ R\$ 29,90/.test(norm(r.info)) && /down/.test(r.trend), 'variação: ' + norm(r.info) + ' / ' + r.trend);
+    ok(/média dos links R\$ 334,95/.test(norm(r.resumo)), 'média: ' + norm(r.resumo)); eq(r.campo, '', 'campo de preço volta vazio');
+    await registrar('Air fryer', 0, '320');
+    const info = norm(await blockInfo('Air fryer', 0)); ok(/R\$ 320,00/.test(info) && /↑ R\$ 20,00/.test(info), 'subiu: ' + info);
+    eq((await histOf('Air fryer', 0)).hist, [329.9, 300, 320]);
+  });
+
+  await test('registro com data anterior entra na ordem certa sem virar o preço atual; data futura e preço inválido são recusados', async () => {
+    await openPage(); await goto('desejos'); await openWl('Air fryer');
+    await registrar('Air fryer', 0, '400,00', '2026-09-01');
+    let h = await histOf('Air fryer', 0); eq([h.price, h.hist], [329.9, [400, 329.9]], 'o mais antigo vem antes e o preço atual não muda');
+    await registrar('Air fryer', 0, '100,00', '2026-09-30');
+    ok(/data futura|futura/i.test(await ev(`return document.getElementById('wl-status').textContent`)), 'aviso de data futura');
+    await registrar('Air fryer', 0, 'abc');
+    ok(/Informe o preço/.test(await ev(`return document.getElementById('wl-status').textContent`)), 'aviso de preço inválido');
+    eq((await histOf('Air fryer', 0)).hist, [400, 329.9], 'nada foi registrado');
+    const rows = await ev(`const b=${wlCard('Air fryer')}.querySelectorAll('.wl-link-block')[0]; b.querySelector('details.wl-hist').open=true; return [...b.querySelectorAll('.wl-hist-row')].map(r=>r.textContent.replace(/\\s+/g,' ').trim())`);
+    eq(rows.length, 2); ok(/15\/09/.test(rows[0]) && /R\$ 329,90/.test(rows[0]) && /↓ R\$ 70,10/.test(rows[0]), 'mais recente primeiro: ' + rows[0]); ok(/01\/09/.test(rows[1]) && /R\$ 400,00/.test(rows[1]), 'registro antigo: ' + rows[1]);
+  });
+
+  await test('excluir um registro recalcula o preço atual e a média; sem registros o link fica sem preço e sai da média', async () => {
+    await openPage(); await goto('desejos'); await openWl('Air fryer');
+    await registrar('Air fryer', 0, '300,00');
+    const apagar = () => ev(`const b=${wlCard('Air fryer')}.querySelectorAll('.wl-link-block')[0]; b.querySelector('details.wl-hist').open=true; b.querySelector('.wl-hist-row .wl-hist-del').click(); await new Promise(r=>setTimeout(r,250));`);
+    await apagar();   // apaga o mais recente (300,00)
+    let h = await histOf('Air fryer', 0); eq([h.price, h.hist], [329.9, [329.9]], 'volta ao registro anterior');
+    await apagar();   // apaga o último
+    h = await histOf('Air fryer', 0); eq([h.price, h.hist], [0, []], 'link sem preço');
+    const r = await ev(`const c=${wlCard('Air fryer')}; return { resumo: c.querySelector('.wl-prices').textContent, info: c.querySelectorAll('.wl-link-block')[0].querySelector('.wl-link-info').textContent, hist: !!c.querySelectorAll('.wl-link-block')[0].querySelector('details.wl-hist') }`);
+    ok(/média dos links R\$ 369,90/.test(norm(r.resumo)), 'a média só considera o link que tem preço: ' + norm(r.resumo)); ok(/Sem preço registrado/.test(r.info), r.info); eq(r.hist, false, 'sem registros não mostra histórico');
+  });
+
+  await test('link adicionado sem preço fica fora da média até o preço ser registrado', async () => {
+    await openPage(); await goto('desejos'); await openWl('Air fryer');
+    await ev(`const c=${wlCard('Air fryer')}; const add=c.querySelector('.wl-link-add'); const [u,p]=add.querySelectorAll('input'); u.value='https://loja-nova.exemplo/af'; add.querySelector('button').click(); await new Promise(r=>setTimeout(r,250));`);
+    let resumo = norm(await ev(`return ${wlCard('Air fryer')}.querySelector('.wl-prices').textContent`)); ok(/média dos links R\$ 349,90/.test(resumo), 'sem o novo link: ' + resumo);
+    ok(/Sem preço registrado/.test(await blockInfo('Air fryer', 2)), 'novo link sem preço');
+    await registrar('Air fryer', 2, '200,00');
+    resumo = norm(await ev(`return ${wlCard('Air fryer')}.querySelector('.wl-prices').textContent`)); ok(/média dos links R\$ 299,93/.test(resumo), 'com o novo preço: ' + resumo);
+    await ev(`const c=${wlCard('Air fryer')}; const add=c.querySelector('.wl-link-add'); const [u,p]=add.querySelectorAll('input'); u.value='https://loja-d.exemplo/af'; p.value='250,00'; add.querySelector('button').click(); await new Promise(r=>setTimeout(r,250));`);
+    eq((await histOf('Air fryer', 3)), { price: 250, hist: [250] }, 'link adicionado já com preço vira o 1º registro');
+  });
+
+  await test('dados antigos (link só com "price", sem histórico) viram o 1º registro, continuam na média e ficam salvos de forma estável', async () => {
+    await openPage();
+    await ev(`localStorage.setItem('cf-wishlist-v1', JSON.stringify({ items:[{ id:'a', name:'Legado', expectedPrice:100, note:'', links:[{ id:'x', url:'https://a.exemplo/1', price:80 },{ id:'y', url:'https://a.exemplo/2', price:120 },{ id:'z', url:'https://a.exemplo/3', price:0 }] }] }));`);
+    await reload(false); await goto('desejos');
+    const t1 = await ev(`const it=JSON.parse(localStorage.getItem('cf-wishlist-v1')).items[0]; return it.links.map(l=>[l.price, l.history.length, l.history[0] && l.history[0].t])`);
+    eq(t1.map(x => [x[0], x[1]]), [[80, 1], [120, 1], [0, 0]]); ok(t1[0][2] > 0, 'o 1º registro tem data');
+    ok(/média dos links R\$ 100,00/.test(norm(await ev(`return ${wlCard('Legado')}.querySelector('.wl-prices').textContent`))), 'média');
+    await reload(false);
+    const t2 = await ev(`const it=JSON.parse(localStorage.getItem('cf-wishlist-v1')).items[0]; return it.links.map(l=>l.history[0] && l.history[0].t)`);
+    eq(t2, t1.map(x => x[2]), 'a data do registro migrado não pode mudar a cada abertura do app');
+  });
+
+  await test('o alerta "abaixo do valor esperado" segue o preço atual: registrar um preço menor aumenta a economia; um maior a reduz', async () => {
+    await openPage(); await goto('desejos'); await openWl('Air fryer');
+    const total = () => ev(`return window.CF.wishlist.priceDrops()`);
+    near((await total()).total, 349.9 - 329.9, 0.001, 'economia inicial');
+    await registrar('Air fryer', 0, '300,00'); near((await total()).total, 49.9, 0.001, 'depois de registrar 300');
+    await registrar('Air fryer', 0, '400,00'); await registrar('Air fryer', 1, '400,00'); eq((await total()).count, 0, 'com todos acima do esperado não há alerta');
+    ok(!/caíram de preço|caiu de preço/.test(norm(await ev(`return document.getElementById('notifPanel').innerText`))), 'sino sem alerta de preço');
+  });
+
+  await test('o histórico persiste ao recarregar e o painel do histórico continua aberto depois de registrar outro preço', async () => {
+    await openPage(); await goto('desejos'); await openWl('Air fryer');
+    await ev(`const b=${wlCard('Air fryer')}.querySelectorAll('.wl-link-block')[0]; b.querySelector('details.wl-hist').open=true; b.querySelector('details.wl-hist').dispatchEvent(new Event('toggle'));`);
+    await registrar('Air fryer', 0, '310,00');
+    ok(await ev(`return ${wlCard('Air fryer')}.querySelectorAll('.wl-link-block')[0].querySelector('details.wl-hist').open`), 'histórico deveria continuar aberto');
+    await reload(false); await goto('desejos'); await openWl('Air fryer');
+    eq((await histOf('Air fryer', 0)).hist, [329.9, 310]); ok(/R\$ 310,00/.test(norm(await blockInfo('Air fryer', 0))), 'preço atual após recarregar');
+  });
+
+  await test('o preço registrado aceita "1.299,90", "R$ 349,90" e "349.90"', async () => {
+    await openPage(); await goto('desejos'); await openWl('Air fryer');
+    await registrar('Air fryer', 0, '1.299,90'); await registrar('Air fryer', 0, 'R$ 349,90'); await registrar('Air fryer', 0, '349.5');
+    eq((await histOf('Air fryer', 0)).hist, [329.9, 1299.9, 349.9, 349.5]);
   });
 
   await test('compras: item repetido avisa e mantém o texto digitado (botão e Enter); item novo limpa o campo', async () => {

@@ -281,7 +281,7 @@
   .sc-add-row input, .cat-name-input, .add-cat-row input, .ex-add-panel input, .ex-add-panel select,
   .field input, .field select, .field textarea, .filters input, .filters select, .cp-name,
   .cp-field input, .cp-field select, .mk-item-row input, .mk-item-row select, .goal-edit input,
-  .pc-search input, .edit-input, .wl-form input, .wl-link-add input, .wl-link-price {
+  .pc-search input, .edit-input, .wl-form input, .wl-link-add input, .wl-reg input {
     width: 100%; min-height: 40px; padding: 6px 10px; font: inherit; font-size: 14px; line-height: 1.3;
     color: var(--text); caret-color: var(--accent);
     background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md);
@@ -597,7 +597,9 @@
   .wl-form { flex-direction: column; gap: 10px; }
   .wl-form .field input { background: var(--bg); }
   .wl-link-row { display: flex; gap: 6px; align-items: center; }
-  .wl-link-row input { flex: 1; }
+  .wl-link-row input { flex: 1; min-width: 0; }
+  .wl-link-row input:nth-child(2) { flex: 0 0 96px; }
+  .wl-hint { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
   .wl-x { background: none; border: none; color: var(--color-neutral-500); cursor: pointer; padding: 4px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex: none; }
   .wl-x svg { width: 15px; height: 15px; stroke-width: 1.7; }
   .wl-x:active { color: var(--danger); }
@@ -613,10 +615,28 @@
   .wl-price-line .wl-avg { color: var(--accent); }
   .wl-price-line .wl-drop { color: var(--good); }
   .wl-toggle-links { align-self: flex-start; background: none; border: none; padding: 0; font-size: 12px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-family: inherit; }
-  .wl-links { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .wl-links { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
   .wl-link { display: flex; align-items: center; gap: 8px; }
   .wl-link a { flex: 1; min-width: 0; font-size: 12px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .wl-link-price { width: 92px; flex: none; min-height: 32px; padding: 3px 8px; font-size: 13px; text-align: right; background: var(--bg); }
+  .wl-link-block { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .wl-link-info { font-size: 12px; color: var(--muted); }
+  .wl-link-info .wl-cur { color: var(--color-neutral-300); font-weight: 500; }
+  .wl-trend { font-weight: 500; white-space: nowrap; }
+  .wl-trend.down { color: var(--good); }
+  .wl-trend.up { color: var(--warning); }
+  .wl-trend.flat { color: var(--muted); font-weight: 400; }
+  .wl-reg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .wl-reg input { min-width: 0; min-height: 32px; padding: 3px 8px; font-size: 13px; background: var(--bg); }
+  .wl-reg input:first-child { flex: 1 1 90px; }
+  .wl-reg input[type=date] { flex: 1 1 130px; }
+  .wl-reg .btn { flex: none; min-height: 32px; padding: 4px 12px; font-size: 13px; }
+  .wl-hist summary { font-size: 12px; color: var(--accent); cursor: pointer; padding: 2px 0; }
+  .wl-hist-row { display: flex; align-items: center; gap: 10px; font-size: 12px; padding: 3px 0; border-top: 1px solid var(--line); }
+  .wl-hist-row:first-of-type { margin-top: 4px; }
+  .wl-hist-date { flex: none; min-width: 5.2em; color: var(--muted); }
+  .wl-hist-price { flex: none; color: var(--color-neutral-300); font-weight: 500; }
+  .wl-hist-trend { flex: 1; min-width: 0; }
+  .wl-hist-row .wl-x { width: 28px; height: 28px; }
   .wl-link-add { display: flex; gap: 6px; }
   .wl-link-add input { font-size: 13px; background: var(--bg); }
   .wl-link-add input:first-child { flex: 1.6; }
@@ -930,7 +950,8 @@
       <div class="field"><label for="wl-name">Descrição do item</label><input type="text" id="wl-name" placeholder="Ex.: Air fryer" autocomplete="off"></div>
       <div class="field"><label for="wl-price">Valor esperado</label><input type="text" inputmode="decimal" id="wl-price" placeholder="R$ 0,00" autocomplete="off"></div>
       <div class="field">
-        <label>Links de sites para compra online</label>
+        <label>Links dos anúncios e o preço listado em cada um</label>
+        <p class="wl-hint">Cole o link de cada anúncio e digite o preço que aparece nele. O app guarda o histórico e calcula a média entre os links.</p>
         <div id="wl-linkFields"></div>
         <button class="btn btn-ghost" id="wl-addLinkField" type="button" style="align-self:flex-start; padding-left:0; margin-top:6px;">+ Adicionar outro link</button>
       </div>
@@ -3766,14 +3787,19 @@ window.CF.market.getPriceIndex = function () {
 (function () {
 
 /* ================= Lista de desejos =================
-   Itens que o usuário quer comprar: valor esperado + links de lojas online, cada link com seu preço.
-   Queda de preço = o menor preço entre os links ficou abaixo do valor esperado (alimenta o sino). */
+   Itens que o usuário quer comprar: valor esperado + links dos anúncios, cada link com o preço listado.
+   Os preços são SEMPRE informados à mão: cada link guarda um histórico (data + preço) e o preço atual
+   é o registro mais recente. A média do item é a média dos preços atuais dos links que têm preço.
+   Queda de preço = o menor preço atual entre os links ficou abaixo do valor esperado (alimenta o sino). */
 
 const STORAGE_KEY = "cf-wishlist-v1";
-let items = [];          // { id, name, expectedPrice, note, links: [{ id, url, price }] }
+let items = [];          // { id, name, expectedPrice, note, links: [{ id, url, price, history: [{ id, t, price }] }] }
+                         // link.price é derivado: preço do último registro de link.history (ordenado por t)
 let expandedId = null;   // item com a lista de links aberta
 let formOpen = false;
-let linkFieldValues = [''];
+let linkRows = [{ url: '', price: '' }];   // linhas do formulário de novo item
+const openHist = new Set();                // links com o painel "Histórico de preços" aberto
+let migrated = false;                      // algum link antigo (sem histórico) foi convertido no carregamento
 let statusTimeout = null;
 
 const formEl = document.getElementById('wl-form');
@@ -3808,10 +3834,47 @@ function safeHref(url) {
   return u ? 'https://' + u : null;
 }
 
+// Datas sempre no horário local (toISOString() é UTC e vira o dia às 21h no Brasil)
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function fmtDate(t) {
+  const d = new Date(t);
+  const base = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+  return d.getFullYear() === new Date().getFullYear() ? base : base + '/' + d.getFullYear();
+}
+
 function showStatus(msg) {
   statusEl.textContent = msg;
   clearTimeout(statusTimeout);
   statusTimeout = setTimeout(() => { statusEl.textContent = ''; }, 2400);
+}
+
+// Ordena o histórico por data (empate mantém a ordem de inserção) e deriva o preço atual do link
+function syncLink(l) {
+  l.history = l.history.map((e, i) => ({ e: e, i: i })).sort((a, b) => (a.e.t - b.e.t) || (a.i - b.i)).map(x => x.e);
+  const last = l.history[l.history.length - 1];
+  l.price = last ? last.price : 0;
+}
+function addEntry(l, price, t) {
+  l.history.push({ id: makeId(), t: t, price: price });
+  syncLink(l);
+}
+
+function sanitizeLink(l) {
+  const link = { id: String(l.id || makeId()), url: l.url.trim(), price: 0, history: [] };
+  if (Array.isArray(l.history)) {
+    link.history = l.history
+      .filter(e => e && Number(e.price) > 0 && isFinite(Number(e.t)))
+      .map(e => { if (!e.id) migrated = true; return { id: String(e.id || makeId()), t: Number(e.t), price: Number(e.price) }; });
+  } else {
+    // formato antigo: só "price" no link -> vira o primeiro registro do histórico
+    migrated = true;
+    if (Number(l.price) > 0) link.history.push({ id: makeId(), t: Date.now(), price: Number(l.price) });
+  }
+  syncLink(link);
+  return link;
 }
 
 function sanitizeItem(it) {
@@ -3823,7 +3886,7 @@ function sanitizeItem(it) {
     note: typeof it.note === 'string' ? it.note : '',
     links: (Array.isArray(it.links) ? it.links : [])
       .filter(l => l && typeof l.url === 'string' && l.url.trim())
-      .map(l => ({ id: String(l.id || makeId()), url: l.url.trim(), price: Number(l.price) > 0 ? Number(l.price) : 0 })),
+      .map(sanitizeLink),
   };
 }
 
@@ -3833,6 +3896,7 @@ async function saveState() {
 }
 
 async function loadState() {
+  migrated = false;
   try {
     const result = await storageGet(STORAGE_KEY);
     if (result && result.value) {
@@ -3840,6 +3904,8 @@ async function loadState() {
       items = (Array.isArray(parsed.items) ? parsed.items : []).map(sanitizeItem).filter(Boolean);
     }
   } catch (e) { }
+  // grava já convertido: senão a data dos registros migrados mudaria a cada abertura do app
+  if (migrated) await saveState();
   render();
 }
 
@@ -3872,8 +3938,7 @@ function priceLine(label, value, valueCls) {
   return line;
 }
 
-// Resumo de preços do item (esperado / média / menor preço). Separado para poder ser atualizado
-// sem redesenhar a lista inteira (redesenhar tira o foco do campo que o usuário está preenchendo).
+// Resumo de preços do item (esperado / média / menor preço).
 function fillPrices(container, it) {
   container.innerHTML = '';
   if (it.expectedPrice > 0) container.appendChild(priceLine('esperado', it.expectedPrice));
@@ -3882,19 +3947,116 @@ function fillPrices(container, it) {
   if (dropFor(it) > 0) container.appendChild(priceLine('menor preço', bestOf(it), 'wl-drop'));
 }
 
+// Variação entre dois registros: ↓ baixou (bom), ↑ subiu, = igual
+function trendEl(delta) {
+  const d = Math.round(delta * 100) / 100;
+  if (d === 0) return el('span', 'wl-trend flat', '= sem variação');
+  const s = el('span', 'wl-trend ' + (d < 0 ? 'down' : 'up'), (d < 0 ? '↓ ' : '↑ ') + fmtBRL(Math.abs(d)));
+  s.title = (d < 0 ? 'Baixou ' : 'Subiu ') + fmtBRL(Math.abs(d));
+  return s;
+}
+
 function renderLinkFields() {
   linkFieldsEl.innerHTML = '';
-  linkFieldValues.forEach((val, i) => {
+  linkRows.forEach((r, i) => {
     const row = el('div', 'wl-link-row');
-    const input = el('input'); input.type = 'text'; input.inputMode = 'url'; input.placeholder = 'https://…'; input.value = val; input.autocomplete = 'off';
-    input.setAttribute('aria-label', 'Link ' + (i + 1));
-    input.addEventListener('input', () => { linkFieldValues[i] = input.value; });
-    row.appendChild(input);
-    if (linkFieldValues.length > 1) {
-      row.appendChild(iconButton('wl-x', 'Remover link', X_SVG, () => { linkFieldValues.splice(i, 1); renderLinkFields(); }));
+    const url = el('input'); url.type = 'text'; url.inputMode = 'url'; url.placeholder = 'https://…'; url.value = r.url; url.autocomplete = 'off';
+    url.setAttribute('aria-label', 'Link ' + (i + 1));
+    url.addEventListener('input', () => { r.url = url.value; });
+    const price = el('input'); price.type = 'text'; price.inputMode = 'decimal'; price.placeholder = 'Preço'; price.value = r.price; price.autocomplete = 'off';
+    price.setAttribute('aria-label', 'Preço anunciado no link ' + (i + 1));
+    price.addEventListener('input', () => { r.price = price.value; });
+    row.appendChild(url); row.appendChild(price);
+    if (linkRows.length > 1) {
+      row.appendChild(iconButton('wl-x', 'Remover link', X_SVG, () => { linkRows.splice(i, 1); renderLinkFields(); }));
     }
     linkFieldsEl.appendChild(row);
   });
+}
+
+// Registra o preço anunciado hoje (ou numa data passada) no histórico do link. Devolve true se registrou.
+async function registerPrice(l, rawPrice, day) {
+  const price = parsePrice(rawPrice);
+  if (!price) { showStatus('Informe o preço anunciado neste link'); return false; }
+  const today = todayISO();
+  day = day || today;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) { showStatus('Data inválida'); return false; }
+  if (day > today) { showStatus('Não dá para registrar um preço numa data futura'); return false; }
+  // hoje = agora (fica depois de tudo que já foi registrado hoje); dia anterior = meio-dia local dele
+  const t = day === today ? Date.now() : new Date(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), 12).getTime();
+  addEntry(l, price, t);
+  await saveState(); render();
+  return true;
+}
+
+function renderLinkBlock(it, l) {
+  const block = el('div', 'wl-link-block');
+
+  const row = el('div', 'wl-link');
+  const href = safeHref(l.url);
+  if (href) {
+    const a = el('a', null, l.url); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    row.appendChild(a);
+  } else {
+    const span = el('span', null, l.url); span.style.cssText = 'flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    row.appendChild(span);
+  }
+  row.appendChild(iconButton('wl-x', 'Remover link', X_SVG, async () => {
+    const n = l.history.length;
+    if (n && !(await appConfirm('Remover este link e ' + (n === 1 ? 'o registro de preço' : 'os ' + n + ' registros de preço') + '?'))) return;
+    it.links = it.links.filter(x => x.id !== l.id); openHist.delete(l.id);
+    await saveState(); render();
+  }));
+  block.appendChild(row);
+
+  // preço atual = último registro
+  const info = el('div', 'wl-link-info');
+  const n = l.history.length;
+  if (!n) {
+    info.textContent = 'Sem preço registrado';
+  } else {
+    const last = l.history[n - 1];
+    info.appendChild(el('span', 'wl-cur', fmtBRL(l.price)));
+    info.appendChild(document.createTextNode(' · registrado em ' + fmtDate(last.t)));
+    if (n > 1) { info.appendChild(document.createTextNode(' · ')); info.appendChild(trendEl(last.price - l.history[n - 2].price)); }
+  }
+  block.appendChild(info);
+
+  // registrar um novo preço (hoje, ou uma data anterior para completar o histórico)
+  const reg = el('div', 'wl-reg');
+  const pIn = el('input'); pIn.type = 'text'; pIn.inputMode = 'decimal'; pIn.placeholder = 'Novo preço'; pIn.autocomplete = 'off';
+  pIn.setAttribute('aria-label', 'Novo preço anunciado neste link');
+  const dIn = el('input'); dIn.type = 'date'; dIn.value = todayISO(); dIn.max = todayISO();
+  dIn.setAttribute('aria-label', 'Data do preço');
+  const btn = el('button', 'btn btn-secondary', 'Registrar'); btn.type = 'button';
+  const go = () => registerPrice(l, pIn.value, dIn.value);
+  btn.addEventListener('click', go);
+  pIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  reg.appendChild(pIn); reg.appendChild(dIn); reg.appendChild(btn);
+  block.appendChild(reg);
+
+  if (n) {
+    const det = el('details', 'wl-hist');
+    det.open = openHist.has(l.id);
+    det.appendChild(el('summary', null, 'Histórico de preços (' + n + ')'));
+    for (let i = n - 1; i >= 0; i--) {
+      const e = l.history[i];
+      const hr = el('div', 'wl-hist-row');
+      hr.appendChild(el('span', 'wl-hist-date', fmtDate(e.t)));
+      hr.appendChild(el('span', 'wl-hist-price', fmtBRL(e.price)));
+      const tr = el('span', 'wl-hist-trend');
+      if (i > 0) tr.appendChild(trendEl(e.price - l.history[i - 1].price));
+      hr.appendChild(tr);
+      hr.appendChild(iconButton('wl-x wl-hist-del', 'Excluir o registro de ' + fmtDate(e.t) + ' (' + fmtBRL(e.price) + ')', TRASH_SVG, async () => {
+        l.history = l.history.filter(x => x.id !== e.id); syncLink(l);
+        await saveState(); render();
+      }));
+      det.appendChild(hr);
+    }
+    det.addEventListener('toggle', () => { if (det.open) openHist.add(l.id); else openHist.delete(l.id); });
+    block.appendChild(det);
+  }
+  return block;
 }
 
 function renderItem(it) {
@@ -3928,41 +4090,23 @@ function renderItem(it) {
 
   if (expandedId === it.id) {
     const panel = el('div', 'wl-links');
-    it.links.forEach(l => {
-      const row = el('div', 'wl-link');
-      const href = safeHref(l.url);
-      if (href) {
-        const a = el('a', null, l.url); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
-        row.appendChild(a);
-      } else {
-        const span = el('span', null, l.url); span.style.cssText = 'flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-        row.appendChild(span);
-      }
-      const price = el('input', 'wl-link-price'); price.type = 'text'; price.inputMode = 'decimal'; price.placeholder = 'Preço';
-      price.setAttribute('aria-label', 'Preço neste link');
-      price.value = l.price > 0 ? l.price.toFixed(2).replace('.', ',') : '';
-      price.addEventListener('change', async () => {
-        l.price = parsePrice(price.value);
-        price.value = l.price > 0 ? l.price.toFixed(2).replace('.', ',') : '';
-        fillPrices(prices, it);
-        if (window.CF.refreshAlerts) window.CF.refreshAlerts();
-        await saveState();
-      });
-      row.appendChild(price);
-      row.appendChild(iconButton('wl-x', 'Remover link', X_SVG, async () => {
-        it.links = it.links.filter(x => x.id !== l.id); await saveState(); render();
-      }));
-      panel.appendChild(row);
-    });
+    it.links.forEach(l => panel.appendChild(renderLinkBlock(it, l)));
 
     const add = el('div', 'wl-link-add');
-    const urlIn = el('input'); urlIn.type = 'text'; urlIn.inputMode = 'url'; urlIn.placeholder = 'Cole um link do produto…'; urlIn.autocomplete = 'off';
+    const urlIn = el('input'); urlIn.type = 'text'; urlIn.inputMode = 'url'; urlIn.placeholder = 'Cole o link do anúncio…'; urlIn.autocomplete = 'off';
+    urlIn.setAttribute('aria-label', 'Link do anúncio');
     const priceIn = el('input'); priceIn.type = 'text'; priceIn.inputMode = 'decimal'; priceIn.placeholder = 'Preço'; priceIn.autocomplete = 'off';
+    priceIn.setAttribute('aria-label', 'Preço anunciado (opcional)');
     const addBtn = el('button', 'btn btn-primary', 'Adicionar'); addBtn.type = 'button';
     const doAdd = async () => {
       const url = urlIn.value.trim();
-      if (!url) { showStatus('Cole o link do produto'); urlIn.focus(); return; }
-      it.links.push({ id: makeId(), url: url, price: parsePrice(priceIn.value) });
+      if (!url) { showStatus('Cole o link do anúncio'); urlIn.focus(); return; }
+      const raw = priceIn.value.trim();
+      const price = parsePrice(raw);
+      if (raw && !price) { showStatus('Preço inválido'); priceIn.focus(); return; }
+      const link = { id: makeId(), url: url, price: 0, history: [] };
+      if (price) addEntry(link, price, Date.now());
+      it.links.push(link);
       await saveState(); render();
     };
     addBtn.addEventListener('click', doAdd);
@@ -3994,18 +4138,29 @@ toggleBtn.addEventListener('click', () => {
   if (formOpen) nameInput.focus();
 });
 document.getElementById('wl-addLinkField').addEventListener('click', () => {
-  linkFieldValues.push('');
+  linkRows.push({ url: '', price: '' });
   renderLinkFields();
-  const inputs = linkFieldsEl.querySelectorAll('input');
-  if (inputs.length) inputs[inputs.length - 1].focus();
+  const inputs = linkFieldsEl.querySelectorAll('.wl-link-row:last-child input');
+  if (inputs.length) inputs[0].focus();
 });
 
 async function submitNewItem() {
   const name = nameInput.value.trim();
   if (!name) { showStatus('Informe a descrição do item'); nameInput.focus(); return; }
-  const links = linkFieldValues.map(v => v.trim()).filter(Boolean).map(url => ({ id: makeId(), url: url, price: 0 }));
+  // nada é descartado em silêncio: preço sem link ou preço ilegível mantém o formulário como está
+  for (let i = 0; i < linkRows.length; i++) {
+    const url = linkRows[i].url.trim(), raw = linkRows[i].price.trim();
+    if (!url && raw) { showStatus('Cole o link do anúncio do preço informado (link ' + (i + 1) + ')'); return; }
+    if (url && raw && !parsePrice(raw)) { showStatus('Preço inválido no link ' + (i + 1)); return; }
+  }
+  const links = linkRows.filter(r => r.url.trim()).map(r => {
+    const link = { id: makeId(), url: r.url.trim(), price: 0, history: [] };
+    const price = parsePrice(r.price);
+    if (price) addEntry(link, price, Date.now());
+    return link;
+  });
   items.push({ id: makeId(), name: name, expectedPrice: parsePrice(priceInput.value), note: '', links: links });
-  nameInput.value = ''; priceInput.value = ''; linkFieldValues = [''];
+  nameInput.value = ''; priceInput.value = ''; linkRows = [{ url: '', price: '' }];
   formOpen = false;
   await saveState();
   render();
