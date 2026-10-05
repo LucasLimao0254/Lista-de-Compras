@@ -573,6 +573,58 @@ async function launch(port) {
     eq(r.dupBotao.v, 'Arroz 5kg'); ok(/já está na lista/.test(r.dupBotao.s), 'aviso: ' + r.dupBotao.s); eq(r.dupEnter, 'Feijão', 'após Enter em item repetido'); eq([r.novo.v, r.novo.salvo], ['', true]);
   });
 
+  /* ---- Lista de compras: quantidade de cada item */
+  const scAdd = (name, qty) => ev(`const i=document.getElementById('sc-newItemInput'), q=document.getElementById('sc-newQtyInput'); i.value=${JSON.stringify(name)}; ${qty === undefined ? '' : `q.value=${JSON.stringify(qty)};`} document.getElementById('sc-addBtn').click(); await new Promise(r=>setTimeout(r,220));
+    return { nome: i.value, qtd: q.value, status: document.getElementById('sc-status').textContent, salvo: (JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.name===${JSON.stringify(name)})||null) }`);
+  const scLi = name => `[...document.querySelectorAll('#sc-sections li')].find(l=>l.querySelector('.item-label,.edit-input') && (l.querySelector('.item-label')||{}).textContent===${JSON.stringify(name)})`;
+
+  await test('quantidade (compras): o campo existe com nome acessível, começa em 1 e tem 16px no celular', async () => {
+    await openPage(); await goto('compras');
+    const r = await ev(`const q=document.getElementById('sc-newQtyInput'); return q ? { v:q.value, label:q.getAttribute('aria-label')||(q.labels[0]||{}).textContent||'', fs:parseFloat(getComputedStyle(q).fontSize), mode:q.inputMode } : null`);
+    ok(r, 'campo #sc-newQtyInput não existe'); eq(r.v, '1'); ok(/quantidade/i.test(r.label), 'rótulo: ' + r.label); eq(r.fs, 16); eq(r.mode, 'numeric');
+  });
+  await test('quantidade (compras): item novo guarda a quantidade, mostra "3×" só quando passa de 1 e o campo volta para 1', async () => {
+    await openPage(); await goto('compras');
+    const a = await scAdd('Ovos', '3'); eq([a.salvo && a.salvo.qty, a.nome, a.qtd], [3, '', '1']);
+    const b = await scAdd('Manteiga', '1'); eq(b.salvo.qty, 1);
+    const c = await scAdd('Pão', ''); eq(c.salvo.qty, 1, 'quantidade vazia vale 1');
+    const d = await scAdd('Queijo', ' 12 '); eq(d.salvo.qty, 12, 'espaços ao redor são ignorados');
+    const badges = await ev(`return ['Ovos','Manteiga','Pão','Queijo','Arroz 5kg'].map(n => { const l=[...document.querySelectorAll('#sc-sections li')].find(x=>(x.querySelector('.item-label')||{}).textContent===n); const b=l.querySelector('.item-qty'); return b ? b.textContent.trim() : null })`);
+    eq(badges, ['3×', null, null, '12×', null]);
+  });
+  await test('quantidade (compras): valor inválido (0, negativo, texto, decimal, acima de 999) avisa e mantém o que foi digitado', async () => {
+    await openPage(); await goto('compras');
+    for (const bad of ['0', '-2', 'abc', '1,5', '2.5', '1000', '3x']) {
+      const r = await scAdd('Sal', bad);
+      eq([r.nome, r.qtd, r.salvo], ['Sal', bad, null], 'quantidade ' + JSON.stringify(bad));
+      ok(/quantidade/i.test(r.status), 'aviso para ' + JSON.stringify(bad) + ': ' + r.status);
+    }
+    const ok999 = await scAdd('Sal', '999'); eq(ok999.salvo.qty, 999);
+  });
+  await test('quantidade (compras): editar mostra a quantidade atual, salva a nova e recusa valor inválido sem sair da edição', async () => {
+    await openPage(); await goto('compras');
+    eq(await ev(`const l=${scLi('Arroz 5kg')}; l.querySelector('.edit-btn').click(); await new Promise(r=>setTimeout(r,100)); const q=document.querySelector('#sc-sections li .qty-field'); return q ? q.value : null`), '1', 'item antigo, sem quantidade salva, vale 1');
+    const bad = await ev(`const q=document.querySelector('#sc-sections li .qty-field'); q.value='0'; document.querySelector('#sc-sections li .save-btn').click(); await new Promise(r=>setTimeout(r,150));
+      return { aindaEditando: !!document.querySelector('#sc-sections li .qty-field'), status: document.getElementById('sc-status').textContent, salvo: JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.name==='Arroz 5kg').qty }`);
+    eq([bad.aindaEditando, bad.salvo], [true, undefined]); ok(/quantidade/i.test(bad.status), bad.status);
+    await ev(`const q=document.querySelector('#sc-sections li .qty-field'); q.value='4'; q.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); await new Promise(r=>setTimeout(r,200)); return 1`);
+    eq(await ev(`return [!!document.querySelector('#sc-sections li .qty-field'), JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.name==='Arroz 5kg').qty, (${scLi('Arroz 5kg')}).querySelector('.item-qty').textContent.trim()]`), [false, 4, '4×']);
+  });
+  await test('quantidade (compras): a estimativa multiplica o preço médio pela quantidade e a quantidade persiste ao recarregar', async () => {
+    await openPage(); await goto('compras');
+    const antes = norm(await ev(`return document.getElementById('sc-estimateValue').textContent`));
+    await ev(`const l=${scLi('Feijão')}; l.querySelector('.edit-btn').click(); await new Promise(r=>setTimeout(r,100)); const q=document.querySelector('#sc-sections li .qty-field'); q.value='3'; document.querySelector('#sc-sections li .save-btn').click(); await new Promise(r=>setTimeout(r,200)); return 1`);
+    const r = await ev(`const l=${scLi('Feijão')}; return { tag: l.querySelector('.item-price-estimate').textContent, titulo: l.querySelector('.item-price-estimate').title, total: document.getElementById('sc-estimateValue').textContent }`);
+    eq([norm(antes), norm(r.total)], ['R$ 10,70', 'R$ 26,30']); eq(norm(r.tag), '~R$ 23,40'); ok(/3/.test(r.titulo) && /unidade|cada/i.test(r.titulo), 'dica: ' + r.titulo);
+    await reload(false); await goto('compras');
+    eq(await ev(`return ${scLi('Feijão')}.querySelector('.item-qty').textContent.trim()`), '3×');
+  });
+  await test('quantidade (compras): em 320 px o campo cabe sem rolagem horizontal e o nome ainda tem espaço', async () => {
+    await openPage({ width: 320 }); await goto('compras');
+    const r = await ev(`const q=document.getElementById('sc-newQtyInput').getBoundingClientRect(), n=document.getElementById('sc-newItemInput').getBoundingClientRect(); return { rolagem: document.documentElement.scrollWidth - window.innerWidth, qFim: q.right, w: innerWidth, nomeLargura: n.width, qLargura: q.width }`);
+    ok(r.rolagem <= 0, 'rolagem horizontal: ' + r.rolagem); ok(r.qFim <= r.w, 'campo fora da tela'); ok(r.nomeLargura >= 110, 'nome muito estreito: ' + r.nomeLargura); ok(r.qLargura >= 44, 'quantidade estreita: ' + r.qLargura);
+  });
+
   await test('modais: role/aria-modal, o foco entra ao abrir, Tab fica preso dentro e o foco volta ao fechar', async () => {
     await openPage(); await goto('mercado');
     const tab = shift => send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: shift ? 8 : 0 }).then(() => send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }));

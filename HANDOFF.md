@@ -100,6 +100,9 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
   último registro. `price` 0 / `history` vazio = link sem preço, ignorado na média e na queda de preço).
   Links no formato antigo (só `price`, sem `history`) são convertidos no carregamento — o `price` vira o
   primeiro registro — e o resultado é gravado na hora, para a data do registro não mudar a cada abertura.
+- Lista de compras: cada item tem `qty` (inteiro de 1 a 999; vazio vale 1). Itens antigos não têm o campo e valem 1 (use
+  `itemQty(item)`, nunca `item.qty` direto). O selo "N×" só aparece quando N > 1 e a estimativa de preço multiplica a média do
+  Mercado (que é por unidade) pela quantidade. Valor inválido avisa e mantém o que foi digitado (`parseQty`).
 - Migração automática (uma vez só, na primeira carga de cada módulo se a chave
   nova estiver vazia): lista de compras busca em `lista-compras-v4`, despesas
   fixas busca em `despesas-fixas-v1` (chaves de apps standalone anteriores).
