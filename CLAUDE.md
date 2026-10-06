@@ -37,6 +37,21 @@ antigo) e sem fonte externa (a Inter está embutida em base64). Detalhes em `HAN
   (Amazon/Mercado Livre/Magalu bloqueiam) — tudo é digitado pelo usuário.
 - **Modais** ganham foco, prisão de Tab e retorno de foco automaticamente (observador em `.overlay`); ao criar um modal novo,
   inclua-o na lista `modalOverlays` e dê `role="dialog"`, `aria-modal` e um nome.
+- **Um diálogo por vez.** `appAlert`/`appConfirm` entram numa fila (`dialogQueue`): nunca mexa no overlay direto, senão um aviso
+  troca o texto de uma confirmação aberta e o "OK" confirma a ação errada.
+- **Editar não reclassifica.** `saveEdit` (compras e despesas) só troca a categoria quando o nome mudou **e** o item ainda estava na
+  categoria automática; e só altera o item depois de validar tudo.
+- **Vencimentos:** use `dueSoonDays()`, `dueDayThisMonth()` e `isOverdue()`; nunca compare `dueDay` com o dia de hoje direto (dia 31
+  em mês curto vence no último dia; conta já paga avisa do vencimento do mês seguinte). O sino mostra atrasadas (`CF.expenses.overdue`)
+  além das que vencem em breve.
+- **O dia muda com o app aberto** (PWA retomado, não recarregado): `refreshIfDayChanged` chama `CF.expenses.refresh` e
+  `CF.market.refresh`. Tela nova que dependa de "hoje" precisa entrar ali, sem apagar o que o usuário está digitando.
+- **Service worker:** só pedidos da mesma origem passam pelo cache, e a página do app só substitui uma *navegação* sem rede.
+  Devolver o `index.html` para qualquer pedido que falha faz um erro parecer sucesso (aconteceu na busca da NFC-e).
+- **Avisos das telas** (`showStatus`) são `.toast` fixos no rodapé com `role="status"`; não volte a pôr a mensagem no fim da página.
+- **Todo campo precisa de nome acessível** (`<label for>` ou `aria-label`) e caixa de marcar usa `window.cfCheckbox`: há um teste
+  que percorre todos os campos da página.
+- **Formulário de compra do Mercado:** fechar com algo digitado pede confirmação (`requestCloseModal`); só `closeModal()` direto depois de salvar.
 
 ## Rodar localmente
 
@@ -54,6 +69,7 @@ npx serve .
   "nenhum recurso externo", fuso horário à noite, arrastar e soltar e o app abrindo offline (service worker).
   Ao achar um bug, escreva o teste que falha primeiro e só então corrija.
   `TEST_INDEX=outro.html npm test` roda contra uma cópia (útil para conferir que o teste pega um defeito).
+  `TEST_FILTER="^rev2:" node tests/e2e.js` roda só os testes cujo nome casar com a expressão regular.
 
 - Sintaxe: extrair os `<script>` sem atributos (`/<script>([\s\S]*?)<\/script>/g`) e rodar `node --check` em cada um.
 - IDs duplicados: `grep -oE 'id="[a-zA-Z0-9_-]+"' index.html | sort | uniq -c | sort -rn`.

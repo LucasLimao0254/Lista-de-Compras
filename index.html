@@ -204,6 +204,8 @@
   .alert strong { font-weight: 500; }
   .alert-good { border-color: rgba(79, 168, 102, 0.45); background: rgba(79, 168, 102, 0.1); }
   .alert-good svg { color: var(--good); }
+  .alert-danger { border-color: rgba(219, 108, 102, 0.45); background: rgba(219, 108, 102, 0.1); }
+  .alert-danger svg { color: var(--color-danger-300); }
 
   /* ================= Menu lateral ================= */
   .drawer-overlay { position: fixed; inset: 0; background: rgba(41, 43, 49, 0.55); z-index: 200; display: none; animation: cf-fade-in 0.15s ease; }
@@ -299,6 +301,13 @@
   input[type=date] { min-height: 40px; }
 
   .status { text-align: center; color: var(--muted); font-size: 12px; min-height: 16px; }
+  /* Avisos das telas (item repetido, valor inválido…): fixos no rodapé, senão ficam fora da tela em listas longas */
+  .toast {
+    position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 400;
+    max-width: 420px; margin: 0 auto; min-height: 0; padding: 10px 14px; font-size: 13px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-md); pointer-events: none;
+  }
+  .toast:empty { display: none; }
   .empty-state { text-align: center; color: var(--muted); font-size: 14px; padding: 26px 10px; border: 1px dashed var(--line); border-radius: var(--radius-md); }
   .empty { color: var(--text-muted); font-size: 13px; padding: 18px 4px; text-align: center; }
 
@@ -375,6 +384,7 @@
   body.dragging-active .section ul:empty::before { content: 'Solte aqui'; display: flex; align-items: center; justify-content: center; height: 52px; color: var(--muted); font-size: 14px; }
 
   .box { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid var(--line); display: flex; align-items: center; justify-content: center; transition: border-color 0.2s ease, background 0.2s ease; cursor: pointer; }
+  .box:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .box svg { width: 14px; height: 14px; opacity: 0; transition: opacity 0.15s ease; stroke: var(--bg); }
   li.checked .box, li.paid .box { background: var(--good); border-color: var(--good); }
   li.checked .box svg, li.paid .box svg { opacity: 1; }
@@ -733,16 +743,17 @@
     </div>
 
     <div>
-      <div class="ov-block-title"><h4>Despesas fixas</h4><a class="ov-link" data-goto="despesas">abrir →</a></div>
+      <div class="ov-block-title"><h4>Despesas fixas</h4><a class="ov-link" href="#" data-goto="despesas">abrir →</a></div>
       <div class="ov-card">
         <div class="ov-row"><span class="ov-row-label">Total do mês</span><span class="ov-row-value" id="ovExpensesTotal">R$ 0,00</span></div>
         <div class="ov-row"><span class="ov-row-label">Pago</span><span class="ov-row-value" id="ovExpensesPaid">R$ 0,00</span></div>
         <div class="ov-row"><span class="ov-row-label">Pendente</span><span class="ov-row-value" id="ovExpensesPending">R$ 0,00</span></div>
+        <div class="ov-row"><span class="ov-row-label">Atrasadas</span><span class="ov-row-value" id="ovExpensesOverdue">R$ 0,00</span></div>
       </div>
     </div>
 
     <div>
-      <div class="ov-block-title"><h4>Lista de desejos</h4><a class="ov-link" data-goto="desejos">abrir →</a></div>
+      <div class="ov-block-title"><h4>Lista de desejos</h4><a class="ov-link" href="#" data-goto="desejos">abrir →</a></div>
       <div class="ov-card">
         <div class="ov-row"><span class="ov-row-label">Itens na lista</span><span class="ov-row-value" id="ovWishCount">0</span></div>
         <div class="ov-row"><span class="ov-row-label">Quedas de preço</span><span class="ov-row-value" id="ovWishDrops">0</span></div>
@@ -750,7 +761,7 @@
     </div>
 
     <div>
-      <div class="ov-block-title"><h4>Lista de compras</h4><a class="ov-link" data-goto="compras">abrir →</a></div>
+      <div class="ov-block-title"><h4>Lista de compras</h4><a class="ov-link" href="#" data-goto="compras">abrir →</a></div>
       <div class="ov-card">
         <div class="ov-row"><span class="ov-row-label">Itens pendentes</span><span class="ov-row-value" id="ovShoppingPending">0</span></div>
         <div class="ov-row"><span class="ov-row-label">Total na lista</span><span class="ov-row-value" id="ovShoppingTotal">0</span></div>
@@ -758,7 +769,7 @@
     </div>
 
     <div>
-      <div class="ov-block-title"><h4>Controle de mercado</h4><a class="ov-link" data-goto="mercado">abrir →</a></div>
+      <div class="ov-block-title"><h4>Controle de mercado</h4><a class="ov-link" href="#" data-goto="mercado">abrir →</a></div>
       <div class="ov-card">
         <div class="ov-row"><span class="ov-row-label">Gasto neste mês</span><span class="ov-row-value" id="ovMarketMonth">R$ 0,00</span></div>
         <div class="ov-row"><span class="ov-row-label">Idas ao mercado</span><span class="ov-row-value" id="ovMarketTrips">0</span></div>
@@ -782,7 +793,7 @@
 
     <div class="sc-add-row">
       <div class="sc-input-wrap">
-        <input type="text" id="sc-newItemInput" placeholder="Adicionar item..." autocomplete="off">
+        <input type="text" id="sc-newItemInput" aria-label="Novo item" placeholder="Adicionar item..." autocomplete="off">
         <div class="sc-suggestions" id="sc-suggestions"></div>
       </div>
       <input type="text" inputmode="numeric" id="sc-newQtyInput" class="sc-qty-input" value="1" maxlength="3" aria-label="Quantidade" title="Quantidade" autocomplete="off">
@@ -799,7 +810,7 @@
     <div class="cat-panel" id="sc-categoriesPanel">
       <div id="sc-categoriesList"></div>
       <div class="add-cat-row">
-        <input type="text" id="sc-newCategoryInput" placeholder="Nova categoria..." autocomplete="off">
+        <input type="text" id="sc-newCategoryInput" aria-label="Nova categoria" placeholder="Nova categoria..." autocomplete="off">
         <button id="sc-addCategoryBtn" aria-label="Adicionar categoria">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
@@ -809,7 +820,7 @@
     <div id="sc-sections"></div>
 
     <button class="btn btn-secondary btn-block reset-btn" id="sc-resetBtn">Desmarcar tudo</button>
-    <div class="status" id="sc-status"></div>
+    <div class="status toast" id="sc-status" role="status" aria-live="polite"></div>
   </section>
 
   <section class="view" id="view-despesas" data-view-section="despesas">
@@ -829,12 +840,12 @@
 
     <button class="btn btn-secondary btn-block" id="ex-newToggle" type="button" aria-expanded="false">+ Nova despesa</button>
     <div class="ex-add-panel" id="ex-addPanel">
-      <input type="text" id="ex-newNameInput" placeholder="Nome da conta..." autocomplete="off">
+      <input type="text" id="ex-newNameInput" aria-label="Nome da conta" placeholder="Nome da conta..." autocomplete="off">
       <div class="ex-add-panel-row">
-        <input type="text" inputmode="decimal" id="ex-newAmountInput" class="amount-input" placeholder="R$ 0,00" autocomplete="off">
-        <input type="number" min="1" max="31" id="ex-newDayInput" class="day-input" placeholder="Dia" autocomplete="off">
+        <input type="text" inputmode="decimal" id="ex-newAmountInput" aria-label="Valor" class="amount-input" placeholder="R$ 0,00" autocomplete="off">
+        <input type="number" min="1" max="31" id="ex-newDayInput" aria-label="Dia do vencimento" class="day-input" placeholder="Dia" autocomplete="off">
       </div>
-      <select id="ex-newCategorySelect"></select>
+      <select id="ex-newCategorySelect" aria-label="Categoria"></select>
       <button class="btn btn-primary btn-block ex-add-submit-btn" id="ex-addBtn">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         Adicionar despesa
@@ -849,7 +860,7 @@
     <div class="cat-panel" id="ex-categoriesPanel">
       <div id="ex-categoriesList"></div>
       <div class="add-cat-row">
-        <input type="text" id="ex-newCategoryInput" placeholder="Nova categoria..." autocomplete="off">
+        <input type="text" id="ex-newCategoryInput" aria-label="Nova categoria" placeholder="Nova categoria..." autocomplete="off">
         <button id="ex-addCategoryBtn" aria-label="Adicionar categoria">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
@@ -860,7 +871,7 @@
     <div class="empty-state" id="ex-emptyState" style="display:none;">Nenhuma despesa cadastrada ainda. Adicione sua primeira conta acima.</div>
 
     <button class="btn btn-secondary btn-block reset-btn" id="ex-resetBtn">Reiniciar mês (desmarcar tudo)</button>
-    <div class="status" id="ex-status"></div>
+    <div class="status toast" id="ex-status" role="status" aria-live="polite"></div>
   </section>
 
   <section class="view" id="view-mercado" data-view-section="mercado">
@@ -887,14 +898,14 @@
     <div class="card">
       <div class="filters"><div class="chip-group" id="mk-dateChips"></div></div>
       <div class="filters">
-        <input type="search" id="mk-searchBox" placeholder="Buscar item por nome…">
+        <input type="search" id="mk-searchBox" aria-label="Buscar item por nome" placeholder="Buscar item por nome…">
       </div>
       <div class="filters">
-        <select id="mk-storeFilter"><option value="">Todas as lojas</option></select>
-        <select id="mk-cityFilter"><option value="">Todas as cidades</option></select>
+        <select id="mk-storeFilter" aria-label="Filtrar por loja"><option value="">Todas as lojas</option></select>
+        <select id="mk-cityFilter" aria-label="Filtrar por cidade"><option value="">Todas as cidades</option></select>
       </div>
       <div class="filters">
-        <select id="mk-catFilter" style="flex:1;"><option value="">Todas as categorias</option></select>
+        <select id="mk-catFilter" aria-label="Filtrar por categoria" style="flex:1;"><option value="">Todas as categorias</option></select>
       </div>
     </div>
 
@@ -924,7 +935,7 @@
 
     <div class="card plain">
       <div class="card-head"><div><p class="card-title">Compare o preço de um item</p><p class="card-sub">Veja o valor pago em cada loja</p></div></div>
-      <div class="pc-search"><input type="search" id="mk-pcSearch" placeholder='Ex: "arroz", "detergente"...'></div>
+      <div class="pc-search"><input type="search" id="mk-pcSearch" aria-label="Item para comparar preço" placeholder='Ex: "arroz", "detergente"...'></div>
       <div id="mk-pcResult"></div>
     </div>
 
@@ -935,7 +946,7 @@
       <div class="groups" id="mk-groups"></div>
     </div>
 
-    <div class="status" id="mk-status"></div>
+    <div class="status toast" id="mk-status" role="status" aria-live="polite"></div>
   </section>
 
   <!-- ============ COMPARADOR DE PREÇOS ============ -->
@@ -964,7 +975,7 @@
     </div>
     <div class="wl-list" id="wl-list"></div>
     <div class="empty-state" id="wl-empty" style="display:none;">Sua lista de desejos está vazia. Adicione o primeiro item acima.</div>
-    <div class="status" id="wl-status"></div>
+    <div class="status toast" id="wl-status" role="status" aria-live="polite"></div>
   </section>
 </div>
 
@@ -974,12 +985,12 @@
     <p class="sub">Registre os itens de uma ida ao mercado</p>
 
     <div class="field-row">
-      <div class="field"><label>Data</label><input type="date" id="mk-fData"></div>
-      <div class="field"><label>Loja</label><input type="text" id="mk-fLoja" list="mk-storeList" placeholder="Nome da loja"></div>
+      <div class="field"><label for="mk-fData">Data</label><input type="date" id="mk-fData"></div>
+      <div class="field"><label for="mk-fLoja">Loja</label><input type="text" id="mk-fLoja" list="mk-storeList" placeholder="Nome da loja"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Cidade (opcional)</label><input type="text" id="mk-fCidade" placeholder="Cidade"></div>
-      <div class="field"><label>Desconto no caixa (opcional)</label><input type="number" step="0.01" min="0" id="mk-fDesconto" placeholder="0,00"></div>
+      <div class="field"><label for="mk-fCidade">Cidade (opcional)</label><input type="text" id="mk-fCidade" placeholder="Cidade"></div>
+      <div class="field"><label for="mk-fDesconto">Desconto no caixa (opcional)</label><input type="number" step="0.01" min="0" id="mk-fDesconto" placeholder="0,00"></div>
     </div>
     <datalist id="mk-storeList"></datalist>
 
@@ -1005,13 +1016,13 @@
     <p class="sub">Envie o PDF da nota, ou cole a URL do QR Code / a chave de 44 dígitos</p>
 
     <div class="field" style="margin-bottom:14px;">
-      <label>PDF da nota fiscal</label>
+      <label for="mk-nfcePdfInput">PDF da nota fiscal</label>
       <label class="btn btn-secondary btn-block file-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5"></path><path d="M4 19h16"></path></svg><span id="mk-nfcePdfLabel">Escolher arquivo PDF</span><input type="file" id="mk-nfcePdfInput" accept="application/pdf,.pdf"></label>
       <div class="note" id="mk-nfcePdfStatus" style="margin-top:4px;"></div>
     </div>
 
     <div class="field" style="margin-bottom:10px;">
-      <label>URL do QR Code ou chave de acesso (opcional)</label>
+      <label for="mk-nfceInput">URL do QR Code ou chave de acesso (opcional)</label>
       <input type="text" id="mk-nfceInput" placeholder="Cole a URL do QR Code ou os 44 dígitos">
     </div>
     <div class="modal-btns" style="margin-bottom:14px;">
@@ -1030,7 +1041,7 @@
     </div>
 
     <div class="field" style="margin:14px 0 10px;">
-      <label>Alternativa: cole aqui o texto dos itens da nota</label>
+      <label for="mk-nfcePasteArea">Alternativa: cole aqui o texto dos itens da nota</label>
       <textarea id="mk-nfcePasteArea" rows="8" placeholder="Se não tiver o PDF em mãos, cole aqui o conteúdo copiado da página da nota..."></textarea>
     </div>
 
@@ -1042,7 +1053,7 @@
     </div>
 
     <div class="modal-foot">
-      <div class="status" id="mk-nfceStatus" style="margin:0;"></div>
+      <div class="status" id="mk-nfceStatus" role="status" aria-live="polite" style="margin:0;"></div>
       <div class="modal-btns">
         <button class="btn btn-secondary" id="mk-nfceCancelBtn" type="button">Cancelar</button>
         <button class="btn btn-secondary" id="mk-nfceParseBtn" type="button">Processar texto colado</button>
@@ -1094,7 +1105,7 @@ window.CF = { shopping: {}, expenses: {}, market: {}, wishlist: {} };
 // do navegador pode ser bloqueado silenciosamente em alguns ambientes de preview
 // em iframe (a chamada retorna sem mostrar nada, fazendo a ação parecer que
 // simplesmente não funciona). Este modal usa DOM comum, então funciona sempre.
-function appDialog(message, opts) {
+function showDialog(message, opts) {
   opts = opts || {};
   const isConfirm = !!opts.confirm;
   const isDanger = isConfirm && opts.danger !== false;
@@ -1123,6 +1134,26 @@ function appDialog(message, opts) {
     overlay.addEventListener('click', onOverlayClick);
   });
 }
+// Um diálogo de cada vez: se outro for pedido com um aberto (ex.: o aviso de "novo mês" chegando com uma confirmação de
+// exclusão na tela), ele espera a vez. Antes, o segundo trocava o texto do primeiro e o "OK" confirmava os dois.
+let dialogQueue = Promise.resolve();
+function appDialog(message, opts) {
+  const run = dialogQueue.then(function () { return showDialog(message, opts); });
+  dialogQueue = run.catch(function () {});
+  return run;
+}
+// Caixa de marcar acessível: papel de checkbox, foco por Tab e Espaço/Enter para alternar. A lista é redesenhada ao
+// alternar, então o foco é devolvido à caixa do mesmo item.
+window.cfCheckbox = function (box, label, checked, toggle, container, id) {
+  box.setAttribute('role', 'checkbox'); box.tabIndex = 0;
+  box.setAttribute('aria-checked', checked ? 'true' : 'false'); box.setAttribute('aria-label', label);
+  box.addEventListener('keydown', function (e) {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    e.preventDefault(); toggle();
+    const li = Array.prototype.find.call(container.querySelectorAll('li'), function (l) { return l.dataset.id === id; });
+    const again = li && li.querySelector('.box'); if (again) again.focus();
+  });
+};
 window.appConfirm = function (message, opts) { return appDialog(message, Object.assign({ confirm: true }, opts || {})); };
 window.appAlert = function (message) { return appDialog(message, { confirm: false }); };
 </script>
@@ -1181,10 +1212,20 @@ const STORAGE_KEY = "cf-shopping-v1";
 const OLD_STORAGE_KEY = "lista-compras-v4";
 let items = [];
 let categories = [];
+let nameHistory = [];   // nomes que já passaram pela lista (inclusive os excluídos), para as sugestões
 let editingId = null;
 let editingCategory = null;
 let categoriesPanelOpen = false;
 let statusTimeout = null;
+
+function rememberName(name) {
+  const n = String(name || '').trim();
+  if (!n) return;
+  const k = n.toLowerCase();
+  if (nameHistory.some(h => h.toLowerCase() === k)) return;
+  nameHistory.push(n);
+  if (nameHistory.length > 300) nameHistory.shift();
+}
 
 function makeId() { return 'sc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8); }
 function nextOrder() { return items.length ? Math.max(...items.map(i => i.order ?? 0)) + 1 : 0; }
@@ -1272,6 +1313,7 @@ function render() {
 
       const box = document.createElement('div');
       box.className = 'box';
+      window.cfCheckbox(box, item.name, !!item.checked, () => toggleItem(item.id), sectionsEl, item.id);
       box.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#14151a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
       box.addEventListener('click', () => toggleItem(item.id));
       li.appendChild(box);
@@ -1287,6 +1329,7 @@ function render() {
         input.type = 'text';
         input.className = 'edit-input';
         input.value = item.name;
+        input.setAttribute('aria-label', 'Nome do item');
         const qtyInput = document.createElement('input');
         qtyInput.type = 'text'; qtyInput.inputMode = 'numeric'; qtyInput.maxLength = 3;
         qtyInput.className = 'edit-input qty-field';
@@ -1403,7 +1446,7 @@ function renderCategoriesPanel() {
 
     if (editingCategory === cat) {
       const input = document.createElement('input');
-      input.type = 'text'; input.className = 'cat-name-input'; input.value = cat;
+      input.type = 'text'; input.className = 'cat-name-input'; input.value = cat; input.setAttribute('aria-label', 'Nome da categoria');
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') renameCategory(cat, input.value);
         if (e.key === 'Escape') { editingCategory = null; render(); }
@@ -1496,10 +1539,18 @@ function addItem(rawName, rawQty) {
   if (!name) return false;
   const qty = parseQty(rawQty);
   if (qty === null) { showStatus(QTY_MSG); return false; }
-  const exists = items.some(i => i.name.toLowerCase() === name.toLowerCase());
-  if (exists) { showStatus('"' + name + '" já está na lista'); return false; }
+  const existing = items.find(i => i.name.toLowerCase() === name.toLowerCase());
+  if (existing && !existing.checked) { showStatus('"' + name + '" já está na lista'); return false; }
+  if (existing) {   // já comprado: volta para a lista em vez de duplicar (é o que as sugestões oferecem)
+    existing.checked = false; existing.qty = qty;
+    render();
+    saveState();
+    showStatus('"' + existing.name + '" voltou para a lista');
+    return true;
+  }
   const category = classifyItem(name);
   items.push({ id: makeId(), name, qty, category, checked: false, order: nextOrder() });
+  rememberName(name);
   render();
   saveState();
   return true;
@@ -1514,8 +1565,13 @@ async function saveEdit(id, rawName, rawQty) {
   if (name) {
     const dup = items.some(i => i.id !== id && i.name.toLowerCase() === name.toLowerCase());
     if (dup) { showStatus('"' + name + '" já está na lista'); return; }
+    // Só reclassifica quando o nome mudou E o item ainda estava na categoria automática: quem moveu o item à mão
+    // (ou só mudou a quantidade) não pode perder a categoria escolhida.
+    const wasAuto = it.category === classifyItem(it.name);
+    const renamed = name.toLowerCase() !== it.name.toLowerCase();
     it.name = name;
-    it.category = classifyItem(name);
+    if (renamed && wasAuto) it.category = classifyItem(name);
+    rememberName(name);
   }
   it.qty = qty;
   editingId = null;
@@ -1597,7 +1653,7 @@ async function commitReorder(id, newCategory, newIndex) {
 }
 
 async function saveState() {
-  try { await storageSet(STORAGE_KEY, JSON.stringify({ items: items, categories: categories })); }
+  try { await storageSet(STORAGE_KEY, JSON.stringify({ items: items, categories: categories, history: nameHistory })); }
   catch (e) { showStatus('Não foi possível salvar (offline?)'); }
 }
 
@@ -1610,6 +1666,7 @@ async function loadState() {
       const parsed = JSON.parse(result.value);
       items = Array.isArray(parsed.items) ? parsed.items : [];
       categories = Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : DEFAULT_CATEGORIES.slice();
+      nameHistory = Array.isArray(parsed.history) ? parsed.history.filter(n => typeof n === 'string' && n.trim()).slice(-300) : [];
     } else {
       // Nada salvo ainda na chave nova: procura dados do app antigo de Lista de Compras
       // (lista-compras-v4) e migra automaticamente, se existirem.
@@ -1631,6 +1688,7 @@ async function loadState() {
     if (typeof it.order !== 'number') it.order = idx;
     if (!categories.includes(it.category)) it.category = categories[0];
   });
+  items.forEach(it => rememberName(it.name));
   statusEl.textContent = '';
   render();
   await saveState();
@@ -1660,17 +1718,16 @@ scNewCategoryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') {
 const scNewItemInput = document.getElementById('sc-newItemInput');
 const scSuggestionsBox = document.getElementById('sc-suggestions');
 
-// Histórico de sugestões = nomes distintos de itens que já passaram por esta
-// lista (inclui os já comprados/marcados, já que só some daqui se for excluído
-// de propósito). Não depende de <datalist> nativo porque o suporte no Safari
-// do iOS é inconsistente — este dropdown é feito na mão, funciona igual em
-// qualquer navegador.
+// Sugestões = itens já comprados (marcados) + nomes que já passaram pela lista e foram excluídos (nameHistory).
+// Itens PENDENTES ficam de fora: escolher um deles só daria "já está na lista". Não depende de <datalist> nativo
+// porque o suporte no Safari do iOS é inconsistente — este dropdown é feito na mão, funciona igual em qualquer navegador.
 function getItemHistory() {
+  const pending = new Set(items.filter(it => !it.checked).map(it => String(it.name).toLowerCase()));
   const seen = new Set();
   const names = [];
-  items.forEach(it => {
-    const key = it.name.toLowerCase();
-    if (!seen.has(key)) { seen.add(key); names.push(it.name); }
+  items.filter(it => it.checked).map(it => it.name).concat(nameHistory).forEach(name => {
+    const key = String(name).toLowerCase();
+    if (!seen.has(key) && !pending.has(key)) { seen.add(key); names.push(name); }
   });
   return names;
 }
@@ -1807,7 +1864,13 @@ function monthsUnpaid(item) { return item.paid ? 0 : (item.unpaidMonths || 1); }
 // Venceu neste mês e ainda não foi paga.
 function overdueThisMonth(item) {
   if (item.paid || !item.dueDay) return false;
-  return item.dueDay < new Date().getDate();
+  return dueDayThisMonth(item) < new Date().getDate();
+}
+function daysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }   // month: 0 a 11
+// Dia em que a conta vence NESTE mês: dia 31 em mês de 30 dias (ou 29–31 em fevereiro) vence no último dia.
+function dueDayThisMonth(item) {
+  const t = new Date();
+  return Math.min(item.dueDay, daysInMonth(t.getFullYear(), t.getMonth()));
 }
 
 // Atrasada: venceu neste mês OU já vem de mês(es) anterior(es) sem pagamento.
@@ -1815,12 +1878,21 @@ function isOverdue(item) {
   return monthsUnpaid(item) > 1 || overdueThisMonth(item);
 }
 
-// Retorna quantos dias faltam pro vencimento (0 = hoje, 1 = amanhã...) se a
-// despesa vence nos próximos 3 dias e ainda não foi paga; null caso contrário
-// (já venceu, já foi paga, está longe do vencimento, ou não tem dia definido).
+// Retorna quantos dias faltam pro vencimento (0 = hoje, 1 = amanhã...) se a despesa vence nos próximos 3 dias;
+// null caso contrário (já venceu, está longe do vencimento, ou não tem dia definido).
+// Conta JÁ PAGA neste mês cujo dia passou: o próximo vencimento é no mês que vem — sem isso, contas dos dias 1 a 3
+// nunca avisavam nos últimos dias do mês (a virada do mês só as desmarca no próprio dia do vencimento).
 function dueSoonDays(item) {
-  if (item.paid || !item.dueDay || monthsUnpaid(item) > 1) return null;
-  const diff = item.dueDay - new Date().getDate();
+  if (!item.dueDay || monthsUnpaid(item) > 1) return null;
+  const t = new Date(), today = t.getDate(), due = dueDayThisMonth(item);
+  let diff;
+  if (!item.paid) {
+    diff = due - today;
+  } else {
+    if (due >= today) return null;   // paga antes do vencimento deste mês
+    const next = new Date(t.getFullYear(), t.getMonth() + 1, 1);
+    diff = (daysInMonth(t.getFullYear(), t.getMonth()) - today) + Math.min(item.dueDay, daysInMonth(next.getFullYear(), next.getMonth()));
+  }
   if (diff < 0 || diff > 3) return null;
   return diff;
 }
@@ -1859,6 +1931,7 @@ function render() {
 
       const box = document.createElement('div');
       box.className = 'box';
+      window.cfCheckbox(box, item.name, !!item.paid, () => toggleItem(item.id), sectionsEl, item.id);
       box.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#14151a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
       box.addEventListener('click', () => toggleItem(item.id));
       li.appendChild(box);
@@ -1893,6 +1966,8 @@ function render() {
         fields.appendChild(notesInput);
 
         li.appendChild(fields);
+        nameInput.setAttribute('aria-label', 'Nome da conta'); amountInput.setAttribute('aria-label', 'Valor');
+        dayInput.setAttribute('aria-label', 'Dia do vencimento'); notesInput.setAttribute('aria-label', 'Observação');
 
         const doSave = () => saveEdit(item.id, nameInput.value, amountInput.value, dayInput.value, notesInput.value);
         nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); if (e.key === 'Escape') { editingId = null; render(); } });
@@ -1932,7 +2007,9 @@ function render() {
             dueSpan.textContent = 'Venceu dia ' + item.dueDay;
           } else if (soonDays !== null) {
             dueSpan.className = 'item-due due-soon-text';
-            dueSpan.textContent = soonDays === 0 ? 'Vence hoje' : (soonDays === 1 ? 'Vence amanhã' : 'Vence em ' + soonDays + ' dias');
+            dueSpan.textContent = item.paid
+              ? 'Próximo vencimento ' + (soonDays === 1 ? 'amanhã' : 'em ' + soonDays + ' dias')   // já paga neste mês: é o do mês que vem
+              : (soonDays === 0 ? 'Vence hoje' : (soonDays === 1 ? 'Vence amanhã' : 'Vence em ' + soonDays + ' dias'));
           } else {
             dueSpan.className = 'item-due';
             dueSpan.textContent = 'Vence dia ' + item.dueDay;
@@ -2040,7 +2117,7 @@ function renderCategoriesPanel() {
 
     if (editingCategory === cat) {
       const input = document.createElement('input');
-      input.type = 'text'; input.className = 'cat-name-input'; input.value = cat;
+      input.type = 'text'; input.className = 'cat-name-input'; input.value = cat; input.setAttribute('aria-label', 'Nome da categoria');
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') renameCategory(cat, input.value);
         if (e.key === 'Escape') { editingCategory = null; render(); }
@@ -2150,11 +2227,17 @@ async function saveEdit(id, rawName, rawAmount, rawDay, rawNotes) {
   if (name) {
     const dup = items.some(i => i.id !== id && i.name.toLowerCase() === name.toLowerCase());
     if (dup) { showStatus('"' + name + '" já está na lista'); return; }
-    it.name = name;
-    it.category = classifyItem(name);
   }
   const newAmount = parseAmount(rawAmount);
   if (newAmount <= 0) { showStatus('Informe um valor válido, maior que zero'); return; }
+  // Tudo validado: só agora altera (antes o nome mudava mesmo quando o valor era recusado).
+  if (name) {
+    // Só reclassifica quando o nome mudou E a conta ainda estava na categoria automática (ver Lista de compras).
+    const wasAuto = it.category === classifyItem(it.name);
+    const renamed = name.toLowerCase() !== it.name.toLowerCase();
+    it.name = name;
+    if (renamed && wasAuto) it.category = classifyItem(name);
+  }
   it.amount = newAmount;
   const day = parseInt(rawDay, 10);
   it.dueDay = (day >= 1 && day <= 31) ? day : null;
@@ -2234,6 +2317,10 @@ async function commitReorder(id, newCategory, newIndex) {
   catItems.splice(newIndex, 0, it);
   catItems.forEach((entry, idx) => { entry.order = idx; });
   render();
+  // As contas com dia aparecem em ordem de vencimento: se a conta não ficou onde foi solta, explica
+  // (senão parece que o arrasto simplesmente não funcionou).
+  const shown = groupedItems()[newCategory] || [];
+  if (shown.indexOf(it) !== Math.min(newIndex, shown.length - 1)) showStatus('As contas ficam em ordem de vencimento; arrastar só troca a categoria.');
   await saveState();
 }
 
@@ -2368,7 +2455,14 @@ window.CF.expenses.summary = function () {
   const paid = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
   return { total: total, paid: paid, pending: total - paid };
 };
-// Contas não pagas que vencem hoje ou nos próximos 3 dias (usado pelo sino de notificações)
+// Contas atrasadas (venceram neste mês ou vêm de meses anteriores sem pagamento), para o sino e a Visão geral
+window.CF.expenses.overdue = function () {
+  const late = items.filter(isOverdue);
+  return { count: late.length, total: late.reduce((s, i) => s + (i.amount || 0), 0) };
+};
+// Redesenha quando o dia muda com o app aberto (ver refreshIfDayChanged); não apaga uma edição em andamento
+window.CF.expenses.refresh = function () { if (editingId === null && !dragState) render(); else updateSummary(); };
+// Contas que vencem hoje ou nos próximos 3 dias (usado pelo sino de notificações)
 window.CF.expenses.dueSoon = function () {
   const soon = items.filter(i => dueSoonDays(i) !== null);
   return { count: soon.length, total: soon.reduce((s, i) => s + (i.amount || 0), 0) };
@@ -2707,7 +2801,9 @@ function renderLine(){
     txt.textContent = v>=1000 ? (v/1000).toFixed(1).replace('.0','')+'k' : v.toFixed(0);
     svg.appendChild(txt);
   }
+  const labelStep = Math.ceil(dates.length / 7);   // no máximo ~7 rótulos de data: com muitas idas eles se sobrepunham
   dates.forEach((d,idx)=>{
+    if (idx % labelStep !== 0) return;
     const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
     txt.setAttribute('x', xFor(idx)); txt.setAttribute('y', H-8); txt.setAttribute('text-anchor','middle');
     txt.setAttribute('font-size','8'); txt.setAttribute('fill', cssColor('--text-muted'));
@@ -2903,17 +2999,21 @@ function renderGroups(){
 }
 
 function renderFilterOptions(){
+  // Loja/cidade filtrada que deixou de existir (compra excluída ou renomeada): desfaz o filtro, senão a tela fica
+  // vazia com o seletor mostrando "Todas".
+  if (filters.store && uniqueStores().indexOf(filters.store) < 0) filters.store = '';
+  if (filters.city && uniqueCities().indexOf(filters.city) < 0) filters.city = '';
   const storeSel = document.getElementById('mk-storeFilter');
   const current = storeSel.value;
   storeSel.innerHTML = '<option value="">Todas as lojas</option>';
   uniqueStores().forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; storeSel.appendChild(o); });
-  storeSel.value = current;
+  storeSel.value = filters.store;
 
   const citySel = document.getElementById('mk-cityFilter');
   const curCity = citySel.value;
   citySel.innerHTML = '<option value="">Todas as cidades</option>';
   uniqueCities().forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; citySel.appendChild(o); });
-  citySel.value = curCity;
+  citySel.value = filters.city;
 
   const catSel = document.getElementById('mk-catFilter');
   const curCat = catSel.value;
@@ -3145,7 +3245,7 @@ function renderGoalCard(){
 
   if (goalEditing){
     const editRow = document.createElement('div'); editRow.className='goal-edit';
-    const input = document.createElement('input'); input.type='number'; input.step='0.01'; input.min='0'; input.placeholder='Ex: 800,00';
+    const input = document.createElement('input'); input.type='number'; input.step='0.01'; input.min='0'; input.placeholder='Ex: 800,00'; input.setAttribute('aria-label','Meta de gasto mensal');
     if (goal) input.value = goal;
     const saveBtn2 = document.createElement('button'); saveBtn2.className='btn btn-primary'; saveBtn2.type='button'; saveBtn2.textContent='Salvar';
     saveBtn2.addEventListener('click', async ()=>{
@@ -3245,6 +3345,8 @@ function newItemRow(){
   CAT_ORDER.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; cat.appendChild(o); });
   const rm = document.createElement('button'); rm.type='button'; rm.className='rm'; rm.textContent='×';
   rm.addEventListener('click', ()=>{ row.remove(); updateModalTotal(); });
+  desc.setAttribute('aria-label','Nome do item'); qtd.setAttribute('aria-label','Quantidade'); un.setAttribute('aria-label','Unidade');
+  vunit.setAttribute('aria-label','Valor unitário'); cat.setAttribute('aria-label','Categoria'); rm.setAttribute('aria-label','Remover item');
 
   let catTouched = false;
   cat.addEventListener('change', ()=>{ catTouched = true; });
@@ -3316,12 +3418,31 @@ function openModal(prefill){
   updateModalTotal();
   document.getElementById('mk-modalTitle').textContent = editingTrip ? 'Editar compra' : 'Adicionar compra';
   document.getElementById('mk-saveBtn').textContent = editingTrip ? 'Salvar alterações' : 'Salvar compra';
+  modalSnapshot = formSnapshot();
   overlay.classList.add('open');
 }
 function closeModal(){ overlay.classList.remove('open'); editingTrip = null; }
+// "Foto" do formulário ao abrir: se algo foi digitado depois, fechar (Cancelar, Esc, toque fora) pede confirmação.
+let modalSnapshot = '';
+let askingDiscard = false;
+function formSnapshot(){
+  const v = id => document.getElementById(id).value;
+  const rows = Array.from(itemRowsEl.querySelectorAll('.mk-item-row')).map(row => ['.mk-desc','.mk-qtd','.mk-un','.mk-vunit','.mk-cat'].map(sel => row.querySelector(sel).value));
+  return JSON.stringify([v('mk-fData'), v('mk-fLoja'), v('mk-fCidade'), v('mk-fDesconto'), rows]);
+}
+async function requestCloseModal(){
+  if (askingDiscard) return;
+  if (formSnapshot() !== modalSnapshot){
+    askingDiscard = true;
+    const discard = await appConfirm('Descartar o que foi digitado nesta compra?', { okLabel: 'Descartar' });
+    askingDiscard = false;
+    if (!discard) return;
+  }
+  closeModal();
+}
 document.getElementById('mk-addBtn').addEventListener('click', ()=>{ editingTrip = null; openModal(); });
-document.getElementById('mk-cancelBtn').addEventListener('click', closeModal);
-overlay.addEventListener('click', e=>{ if (e.target===overlay) closeModal(); });
+document.getElementById('mk-cancelBtn').addEventListener('click', requestCloseModal);
+overlay.addEventListener('click', e=>{ if (e.target===overlay) requestCloseModal(); });
 
 function editTrip(data, loja){
   const items = state.items.filter(i=>i.data===data && i.loja===loja);
@@ -3645,6 +3766,7 @@ document.getElementById('mk-nfceUseBtn').addEventListener('click', ()=>{
     cidade: '',
     items: nfceParsedItems,
   });
+  modalSnapshot = '';   // itens vindos da nota contam como "digitados": fechar sem salvar pede confirmação
 });
 
 document.getElementById('mk-saveBtn').addEventListener('click', async ()=>{
@@ -3660,7 +3782,7 @@ document.getElementById('mk-saveBtn').addEventListener('click', async ()=>{
     const qtde = parseFloat(row.querySelector('.mk-qtd').value);
     const vunit = parseFloat(row.querySelector('.mk-vunit').value);
     const vazioTotal = !descricao && isNaN(qtde) && isNaN(vunit);
-    if (!descricao || !qtde || isNaN(vunit)){
+    if (!descricao || !(qtde > 0) || !(vunit >= 0)){   // quantidade tem de ser positiva e o valor não pode ser negativo
       if (!vazioTotal) ignorados++; // linha em branco no fim não conta como erro
       continue;
     }
@@ -3673,8 +3795,17 @@ document.getElementById('mk-saveBtn').addEventListener('click', async ()=>{
     });
   }
   if (newItems.length===0){ await appAlert('Adicione ao menos um item válido.'); return; }
+  // O desconto não pode ser negativo nem maior que a compra (somando o que já existe nesta data+loja e não está sendo substituído)
+  const descontoRaw = parseFloat(document.getElementById('mk-fDesconto').value);
+  const desconto = isNaN(descontoRaw) ? 0 : descontoRaw;
+  if (desconto < 0){ await appAlert('O desconto não pode ser negativo.'); return; }
+  const replaced = x => !!editingTrip && x.data===editingTrip.data && x.loja===editingTrip.loja;
+  const sameTrip = x => x.data===data && x.loja===loja && !replaced(x);
+  const tripGross = newItems.reduce((a,i)=>a+i.valorTotal,0) + state.items.filter(sameTrip).reduce((a,i)=>a+i.valorTotal,0);
+  const tripDisc = desconto + state.discounts.filter(sameTrip).reduce((a,d)=>a+d.valor,0);
+  if (tripDisc > tripGross + 0.005){ await appAlert('O desconto (' + fmtBRL(tripDisc) + ') é maior que o total da compra (' + fmtBRL(tripGross) + '). Confira os valores.'); return; }
   if (ignorados>0){
-    const continuar = await appConfirm(ignorados + ' item(ns) ficaram incompletos (faltou nome, quantidade ou valor) e NÃO serão salvos. Continuar mesmo assim com os outros ' + newItems.length + ' item(ns)?');
+    const continuar = await appConfirm(ignorados + ' item(ns) ficaram incompletos (faltou nome, quantidade ou valor, ou há número negativo) e NÃO serão salvos. Continuar mesmo assim com os outros ' + newItems.length + ' item(ns)?');
     if (!continuar) return;
   }
   if (editingTrip){
@@ -3684,7 +3815,6 @@ document.getElementById('mk-saveBtn').addEventListener('click', async ()=>{
     state.discounts = state.discounts.filter(d => !(d.data===editingTrip.data && d.loja===editingTrip.loja));
   }
   state.items.push.apply(state.items, newItems);
-  const desconto = parseFloat(document.getElementById('mk-fDesconto').value)||0;
   if (desconto>0){
     const existing = state.discounts.find(d=>d.data===data && d.loja===loja);
     if (existing) existing.valor += desconto;
@@ -3726,13 +3856,18 @@ async function loadState(){
 // Aceita { items: [...], discounts: [...], settings: { monthlyGoal } } (mesmo formato
 // salvo em "cf-market-v1"). Mescla sem duplicar: o que já existe é ignorado, então
 // importar o mesmo arquivo duas vezes não altera nada.
+function validISODate(s){
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const p = s.split('-').map(Number), d = new Date(p[0], p[1]-1, p[2]);
+  return d.getFullYear()===p[0] && d.getMonth()===p[1]-1 && d.getDate()===p[2];   // recusa 2026-13-45 e 30 de fevereiro
+}
 function sanitizeImportedItem(raw){
   if (!raw || typeof raw !== 'object') return null;
   const data = typeof raw.data === 'string' ? raw.data.trim() : '';
   const loja = typeof raw.loja === 'string' ? raw.loja.trim() : '';
   const descricao = typeof raw.descricao === 'string' ? raw.descricao.trim() : '';
   const qtde = Number(raw.qtde), valorUnit = Number(raw.valorUnit);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !loja || !descricao) return null;
+  if (!validISODate(data) || !loja || !descricao) return null;
   if (!isFinite(qtde) || qtde <= 0 || !isFinite(valorUnit) || valorUnit < 0) return null;
   const total = Number(raw.valorTotal);
   return {
@@ -3740,7 +3875,7 @@ function sanitizeImportedItem(raw){
     descricao: descricao, qtde: qtde,
     unidade: typeof raw.unidade === 'string' && raw.unidade.trim() ? raw.unidade.trim() : 'UN',
     valorUnit: valorUnit,
-    valorTotal: isFinite(total) ? total : Math.round(qtde*valorUnit*100)/100,
+    valorTotal: isFinite(total) && total >= 0 ? total : Math.round(qtde*valorUnit*100)/100,
     categoria: CAT_ORDER.indexOf(raw.categoria) >= 0 ? raw.categoria : CAT_ORDER[0],
   };
 }
@@ -3769,8 +3904,10 @@ async function importFromJsonFile(file){
   (Array.isArray(parsed.discounts) ? parsed.discounts : []).forEach(function(d){
     const valor = d ? Number(d.valor) : NaN;
     if (!d || typeof d.data !== 'string' || typeof d.loja !== 'string' || !isFinite(valor) || valor <= 0) return;
-    const dup = state.discounts.concat(newDiscounts).some(function(x){ return x.data === d.data && x.loja === d.loja; });
-    if (!dup) newDiscounts.push({ data: d.data, loja: d.loja, valor: valor });
+    const dData = d.data.trim(), dLoja = d.loja.trim();   // mesmo tratamento dos itens, senão o desconto não casa com a compra
+    if (!validISODate(dData) || !dLoja) return;
+    const dup = state.discounts.concat(newDiscounts).some(function(x){ return x.data === dData && x.loja === dLoja; });
+    if (!dup) newDiscounts.push({ data: dData, loja: dLoja, valor: valor });
   });
 
   const goal = parsed.settings ? Number(parsed.settings.monthlyGoal) : NaN;
@@ -3801,6 +3938,8 @@ document.getElementById('mk-importFile').addEventListener('change', function(e){
 });
 
 window.CF.market.init = loadState;
+// Redesenha quando o dia muda com o app aberto ("Este mês", meta do mês…), sem apagar a meta sendo digitada
+window.CF.market.refresh = function () { if (!goalEditing) renderAll(); };
 window.CF.market.summary = function () {
   const monthKey = currentMonthKey();
   const spend = computeMonthSpend(monthKey);
@@ -4030,7 +4169,7 @@ async function registerPrice(l, rawPrice, day) {
   // hoje = agora (fica depois de tudo que já foi registrado hoje); dia anterior = meio-dia local dele
   const t = day === today ? Date.now() : new Date(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), 12).getTime();
   addEntry(l, price, t);
-  await saveState(); render();
+  await saveState();
   return true;
 }
 
@@ -4074,7 +4213,8 @@ function renderLinkBlock(it, l) {
   const dIn = el('input'); dIn.type = 'date'; dIn.value = todayISO(); dIn.max = todayISO();
   dIn.setAttribute('aria-label', 'Data do preço');
   const btn = el('button', 'btn btn-secondary', 'Registrar'); btn.type = 'button';
-  const go = () => registerPrice(l, pIn.value, dIn.value);
+  pIn.dataset.keep = 'reg-p-' + l.id; dIn.dataset.keep = 'reg-d-' + l.id;
+  const go = async () => { if (await registerPrice(l, pIn.value, dIn.value)) { pIn.value = ''; dIn.value = todayISO(); render(); } };
   btn.addEventListener('click', go);
   pIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
   reg.appendChild(pIn); reg.appendChild(dIn); reg.appendChild(btn);
@@ -4142,6 +4282,7 @@ function renderItem(it) {
     urlIn.setAttribute('aria-label', 'Link do anúncio');
     const priceIn = el('input'); priceIn.type = 'text'; priceIn.inputMode = 'decimal'; priceIn.placeholder = 'Preço'; priceIn.autocomplete = 'off';
     priceIn.setAttribute('aria-label', 'Preço anunciado (opcional)');
+    urlIn.dataset.keep = 'add-u-' + it.id; priceIn.dataset.keep = 'add-p-' + it.id;
     const addBtn = el('button', 'btn btn-primary', 'Adicionar'); addBtn.type = 'button';
     const doAdd = async () => {
       const url = urlIn.value.trim();
@@ -4152,6 +4293,7 @@ function renderItem(it) {
       const link = { id: makeId(), url: url, price: 0, history: [] };
       if (price) addEntry(link, price, Date.now());
       it.links.push(link);
+      urlIn.value = ''; priceIn.value = '';
       await saveState(); render();
     };
     addBtn.addEventListener('click', doAdd);
@@ -4169,8 +4311,15 @@ function render() {
   toggleBtn.setAttribute('aria-expanded', String(formOpen));
   toggleBtn.textContent = formOpen ? 'Fechar formulário' : '+ Adicionar item';
 
+  // O redesenho recria os campos: guarda o que está sendo digitado (link ainda não adicionado, preço de outro link) e devolve.
+  const typed = {}; let focusKey = null;
+  listEl.querySelectorAll('input[data-keep]').forEach(i => { typed[i.dataset.keep] = i.value; if (i === document.activeElement) focusKey = i.dataset.keep; });
   listEl.innerHTML = '';
   items.forEach(it => listEl.appendChild(renderItem(it)));
+  listEl.querySelectorAll('input[data-keep]').forEach(i => {
+    if (typed[i.dataset.keep] != null) i.value = typed[i.dataset.keep];
+    if (i.dataset.keep === focusKey) i.focus();
+  });
   emptyEl.style.display = items.length === 0 ? 'block' : 'none';
 
   if (window.CF.refreshAlerts) window.CF.refreshAlerts();
@@ -4192,6 +4341,8 @@ document.getElementById('wl-addLinkField').addEventListener('click', () => {
 async function submitNewItem() {
   const name = nameInput.value.trim();
   if (!name) { showStatus('Informe a descrição do item'); nameInput.focus(); return; }
+  const rawExpected = priceInput.value.trim();
+  if (rawExpected && !parsePrice(rawExpected)) { showStatus('Valor esperado inválido: use algo como 349,90'); priceInput.focus(); return; }
   // nada é descartado em silêncio: preço sem link ou preço ilegível mantém o formulário como está
   for (let i = 0; i < linkRows.length; i++) {
     const url = linkRows[i].url.trim(), raw = linkRows[i].price.trim();
@@ -4274,7 +4425,7 @@ document.querySelectorAll('.drawer-item').forEach(function(btn) {
   btn.addEventListener('click', function() { goToView(btn.dataset.view); });
 });
 document.querySelectorAll('[data-goto]').forEach(function(el) {
-  el.addEventListener('click', function() { goToView(el.dataset.goto); });
+  el.addEventListener('click', function(e) { e.preventDefault(); goToView(el.dataset.goto); });   // são <a href="#"> (foco e Enter pelo teclado)
 });
 
 function fmtBRL(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
@@ -4305,6 +4456,7 @@ function renderOverview() {
   setText('ovExpensesTotal', fmtBRL(ex.total));
   setText('ovExpensesPaid', fmtBRL(ex.paid));
   setText('ovExpensesPending', fmtBRL(ex.pending));
+  setText('ovExpensesOverdue', fmtBRL(window.CF.expenses.overdue ? window.CF.expenses.overdue().total : 0));
 
   setText('ovWishCount', wl.count);
   setText('ovWishDrops', wl.drops);
@@ -4339,7 +4491,15 @@ function renderAlerts() {
   const soon = window.CF.expenses.dueSoon ? window.CF.expenses.dueSoon() : { count: 0, total: 0 };
   const drops = window.CF.wishlist.priceDrops ? window.CF.wishlist.priceDrops() : { count: 0, total: 0, firstName: '' };
 
+  const late = window.CF.expenses.overdue ? window.CF.expenses.overdue() : { count: 0, total: 0 };
+
   notifPanel.innerHTML = '';
+  if (late.count > 0) {   // vencidas e não pagas: antes sumiam do sino no dia seguinte ao vencimento
+    notifPanel.appendChild(alertEl(' alert-danger', WARN_SVG, [
+      { t: late.count + (late.count === 1 ? ' conta atrasada' : ' contas atrasadas'), bold: true },
+      { t: ' — total de ' }, { t: fmtBRL(late.total), bold: true },
+    ]));
+  }
   if (soon.count > 0) {
     notifPanel.appendChild(alertEl('', WARN_SVG, [
       { t: soon.count + (soon.count === 1 ? ' conta vencendo' : ' contas vencendo'), bold: true },
@@ -4354,7 +4514,7 @@ function renderAlerts() {
     ]));
   }
 
-  const has = soon.count > 0 || drops.count > 0;
+  const has = late.count > 0 || soon.count > 0 || drops.count > 0;
   notifBtn.classList.toggle('has-alerts', has);
   if (!has) closeNotifPanel();
 }
@@ -4381,6 +4541,25 @@ document.addEventListener('keydown', function(e) {
 });
 
 window.CF.refreshAlerts = renderAlerts;
+
+/* ---------- o dia mudou com o app aberto ----------
+   No celular o app instalado costuma ser retomado, não recarregado: "vence amanhã", o sino e o "este mês" do mercado
+   ficavam parados no dia em que o app foi aberto. Confere ao voltar para o app e de minuto em minuto. */
+function dayKey() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+let lastDay = dayKey();
+function refreshIfDayChanged() {
+  const now = dayKey();
+  if (now === lastDay) return;
+  lastDay = now;
+  if (window.CF.expenses.refresh) window.CF.expenses.refresh();
+  if (window.CF.market.refresh) window.CF.market.refresh();
+  renderOverview();
+  renderAlerts();
+}
+document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') refreshIfDayChanged(); });
+window.addEventListener('pageshow', refreshIfDayChanged);
+window.addEventListener('focus', refreshIfDayChanged);
+setInterval(refreshIfDayChanged, 60000);
 
 /* ---------- modais acessíveis: o foco entra ao abrir, o Tab fica preso dentro e o foco volta ao fechar ---------- */
 const modalOverlays = ['app-dialog-overlay', 'mk-nfceOverlay', 'mk-overlay'].map(function(id) { return document.getElementById(id); });   // de cima para baixo
@@ -4463,6 +4642,7 @@ function makeRow(letter) {
   const nameInput = document.createElement('input');
   nameInput.type = 'text'; nameInput.className = 'cp-name';
   nameInput.placeholder = 'Produto ' + letter + ' (opcional)';
+  nameInput.setAttribute('aria-label', 'Nome do produto ' + letter);
   row.appendChild(nameInput);
 
   const fields = document.createElement('div');
@@ -4472,18 +4652,21 @@ function makeRow(letter) {
   const priceLabel = document.createElement('label'); priceLabel.textContent = 'Preço (R$)';
   const priceInput = document.createElement('input');
   priceInput.type = 'number'; priceInput.step = '0.01'; priceInput.min = '0'; priceInput.className = 'cp-price'; priceInput.placeholder = '0,00';
+  priceInput.id = 'cp-price-' + rowCount; priceLabel.htmlFor = priceInput.id;
   priceField.appendChild(priceLabel); priceField.appendChild(priceInput);
 
   const qtyField = document.createElement('div'); qtyField.className = 'cp-field';
   const qtyLabel = document.createElement('label'); qtyLabel.textContent = 'Quantidade';
   const qtyInput = document.createElement('input');
   qtyInput.type = 'number'; qtyInput.step = '0.01'; qtyInput.min = '0'; qtyInput.className = 'cp-qty'; qtyInput.placeholder = '0';
+  qtyInput.id = 'cp-qty-' + rowCount; qtyLabel.htmlFor = qtyInput.id;
   qtyField.appendChild(qtyLabel); qtyField.appendChild(qtyInput);
 
   const unitField = document.createElement('div'); unitField.className = 'cp-field cp-field-unit';
   const unitLabel = document.createElement('label'); unitLabel.textContent = 'Un.';
   const unitSelect = document.createElement('select'); unitSelect.className = 'cp-unit';
   ['ml', 'L', 'g', 'kg', 'un'].forEach(u => { const o = document.createElement('option'); o.value = u; o.textContent = u; unitSelect.appendChild(o); });
+  unitSelect.id = 'cp-unit-' + rowCount; unitLabel.htmlFor = unitSelect.id;
   unitField.appendChild(unitLabel); unitField.appendChild(unitSelect);
 
   const removeBtn = document.createElement('button');

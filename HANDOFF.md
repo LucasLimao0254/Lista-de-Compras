@@ -100,6 +100,9 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
   último registro. `price` 0 / `history` vazio = link sem preço, ignorado na média e na queda de preço).
   Links no formato antigo (só `price`, sem `history`) são convertidos no carregamento — o `price` vira o
   primeiro registro — e o resultado é gravado na hora, para a data do registro não mudar a cada abertura.
+- Lista de compras: `cf-shopping-v1` também guarda `history` (até 300 nomes que já passaram pela lista, inclusive excluídos). As
+  sugestões oferecem só o que dá para adicionar: itens já comprados (marcados) e nomes do histórico que não estão pendentes;
+  adicionar um item já comprado o devolve à lista (desmarca e atualiza a quantidade) em vez de dar "já está na lista".
 - Lista de compras: cada item tem `qty` (inteiro de 1 a 999; vazio vale 1). Itens antigos não têm o campo e valem 1 (use
   `itemQty(item)`, nunca `item.qty` direto). O selo "N×" só aparece quando N > 1 e a estimativa de preço multiplica a média do
   Mercado (que é por unidade) pela quantidade. Valor inválido avisa e mantém o que foi digitado (`parseQty`).
@@ -151,6 +154,24 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
   estavam pendentes. "Reiniciar mês" e "Desmarcar tudo" (Compras) pedem confirmação.
 - Acessibilidade: modais com `role="dialog"`/`aria-modal`, foco que entra ao abrir, Tab preso dentro e retorno do foco ao
   fechar; menu lateral fechado fora da ordem de Tab; Esc fecha o item do topo (diálogo > modais > menu > sino).
+
+## Correções da segunda revisão (06/10/2026) — comportamento que NÃO deve regredir
+
+Todas têm teste com prefixo `rev2:` em `tests/e2e.js`.
+
+- Service worker (cache v3): ignora pedidos a outros sites e só devolve o `index.html` para navegação sem rede.
+- Editar item/conta mantém a categoria escolhida à mão; valor inválido não altera nada pela metade.
+- Diálogos em fila (um aviso não substitui uma confirmação aberta).
+- Despesas: sino e Visão geral mostram contas atrasadas; "Próximo vencimento em N dias" para contas já pagas que vencem logo após a
+  virada do mês; dia 31 em mês curto vence no último dia; tudo se atualiza quando o dia muda com o app aberto.
+- Mercado: filtro de loja/cidade se desfaz quando a loja some; quantidade > 0, valor ≥ 0, desconto entre 0 e o total da compra;
+  importação recusa data impossível e total negativo; rótulos de data do gráfico por loja limitados a ~7; fechar o formulário com
+  dados digitados pede confirmação.
+- Lista de desejos: o redesenho preserva o que está sendo digitado (`data-keep`); valor esperado ilegível avisa.
+- Despesas: arrastar uma conta para uma posição que a ordem de vencimento não permite mostra um aviso (a ordem manual só vale entre
+  contas sem dia; arrastar entre categorias continua funcionando).
+- Acessibilidade: caixas de marcar são `role="checkbox"` operáveis por teclado, "abrir →" são links com `href`, todos os campos têm
+  nome acessível e os avisos são `role="status"` em toast fixo.
 
 ## Limitações conhecidas (decisões deliberadas, não bugs)
 

@@ -5,7 +5,7 @@
 // em segundo plano": abre rápido usando a cópia salva, e atualiza o cache pra
 // próxima vez sempre que houver conexão.
 
-const CACHE_NAME = 'controle-financeiro-v2';
+const CACHE_NAME = 'controle-financeiro-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -36,6 +36,8 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // Só o próprio site passa pelo cache: pedidos a outros endereços (ex.: a consulta da NFC-e) vão direto para a rede.
+  if (new URL(event.request.url).origin !== self.location.origin) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
@@ -47,7 +49,9 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => cached || caches.match('./index.html'));
+        // Sem rede: a página do app só substitui uma NAVEGAÇÃO. Para qualquer outro pedido o erro tem de aparecer
+        // (devolver o index.html fazia um pedido que falhou parecer bem-sucedido).
+        .catch(() => cached || (event.request.mode === 'navigate' ? caches.match('./index.html') : Response.error()));
 
       // Serve do cache na hora se existir (rápido, funciona offline);
       // a rede atualiza o cache em segundo plano pra próxima visita.

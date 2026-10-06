@@ -11,6 +11,7 @@
  * Variáveis opcionais:
  *   CHROME_PATH   caminho do navegador (senão procura Edge/Chrome/Chromium nos lugares comuns)
  *   TEST_INDEX    usa outro HTML no lugar do index.html (serve para "testar o teste" com uma cópia quebrada)
+ *   TEST_FILTER   expressão regular: roda só os testes cujo nome casar (ex.: TEST_FILTER="^rev2:"); os outros são pulados sem contar
  */
 'use strict';
 const { spawn } = require('child_process');
@@ -138,6 +139,7 @@ async function launch(port) {
   /* ---------------------------------------------------------------- runner */
   let pass = 0, fail = 0; const failures = [];
   async function test(name, fn) {
+    if (process.env.TEST_FILTER && !new RegExp(process.env.TEST_FILTER).test(name)) return;   // roda só alguns testes (ex.: TEST_FILTER="^rev2:")
     try { await fn(); pass++; console.log('  ok     ' + name); }
     catch (e) { fail++; failures.push(name); console.log('  FALHA  ' + name + '\n         ' + String(e.message).split('\n')[0]); }
   }
@@ -164,11 +166,12 @@ async function launch(port) {
   await test('subtítulo da Visão geral fica vazio (sem linha em branco)', async () => {
     eq(await ev(`const p=document.getElementById('pageSub'); return [p.textContent, getComputedStyle(p).display]`), ['', 'none']);
   });
-  await test('sino aparece com 2 alertas: 3 contas vencendo (R$ 254,80) e 1 queda de preço (R$ 20,00)', async () => {
+  await test('sino aparece com 3 alertas: 2 contas atrasadas (R$ 590,00), 3 contas vencendo (R$ 254,80) e 1 queda de preço (R$ 20,00)', async () => {
     const r = await ev(`return { has: document.getElementById('notifBtn').classList.contains('has-alerts'), texts: [...document.querySelectorAll('#notifPanel .alert')].map(a=>a.textContent) }`);
-    ok(r.has, 'sino deveria estar visível'); eq(r.texts.length, 2, 'alertas');
-    ok(/3 contas vencendo/.test(norm(r.texts[0])) && /R\$ 254,80/.test(norm(r.texts[0])), 'alerta de contas: ' + norm(r.texts[0]));
-    ok(/1 item da lista de desejos caiu/.test(norm(r.texts[1])) && /R\$ 20,00 em Air fryer/.test(norm(r.texts[1])), 'alerta de desejos: ' + norm(r.texts[1]));
+    ok(r.has, 'sino deveria estar visível'); eq(r.texts.length, 3, 'alertas');
+    ok(/2 contas atrasadas/.test(norm(r.texts[0])) && /R\$ 590,00/.test(norm(r.texts[0])), 'alerta de atrasadas: ' + norm(r.texts[0]));
+    ok(/3 contas vencendo/.test(norm(r.texts[1])) && /R\$ 254,80/.test(norm(r.texts[1])), 'alerta de contas: ' + norm(r.texts[1]));
+    ok(/1 item da lista de desejos caiu/.test(norm(r.texts[2])) && /R\$ 20,00 em Air fryer/.test(norm(r.texts[2])), 'alerta de desejos: ' + norm(r.texts[2]));
   });
   await test('sino abre no clique, fecha com Esc e ao clicar fora', async () => {
     const r = await ev(`const p=document.getElementById('notifPanel'), b=document.getElementById('notifBtn'); const st=[];
@@ -713,6 +716,210 @@ async function launch(port) {
       document.getElementById('sc-resetBtn').click(); await w(); document.getElementById('app-dialog-ok').click(); await w(); const cConfirmar=marc();
       return { aberto1, depoisCancelar, depoisConfirmar, aberto2, cCancelar, cConfirmar }`);
     eq(r, { aberto1: true, depoisCancelar: 3, depoisConfirmar: 0, aberto2: true, cCancelar: 2, cConfirmar: 0 });
+  });
+
+  /* ================================================================ 8c. Segunda revisão de código */
+  group('Regressões: segunda revisão de código');
+  // troca dados salvos e recarrega (o SEED não sobrescreve o que já existe)
+  const withData = async (data, opts) => { await openPage(opts); await ev(`const d=${JSON.stringify(data)}; Object.keys(d).forEach(k=>localStorage.setItem(k, JSON.stringify(d[k]))); return 1`); await reload(false); };
+  const EX = (id, n, a, d, c, p) => ({ id, name: n, amount: a, dueDay: d, notes: '', category: c, paid: p, order: 0 });
+  const MK = (d, l, desc, q, vu) => ({ data: d, loja: l, cidade: 'Cidade Exemplo', descricao: desc, qtde: q, unidade: 'UN', valorUnit: vu, valorTotal: Math.round(q * vu * 100) / 100, categoria: 'Alimentação' });
+  const txt = id => ev(`return document.getElementById('${id}').textContent`);
+  const dlg = () => ev(`const o=document.getElementById('app-dialog-overlay'); return { aberto: o.classList.contains('open'), msg: document.getElementById('app-dialog-message').textContent, cancelar: getComputedStyle(document.getElementById('app-dialog-cancel')).display!=='none', ok: document.getElementById('app-dialog-ok').textContent }`);
+  const clickId = id => ev(`document.getElementById('${id}').click(); await new Promise(r=>setTimeout(r,250)); return 1`);
+
+  await test('rev2: pedido a outro site que falha NÃO recebe a página do app (NFC-e não diz "Consegui buscar!" à toa)', async () => {
+    await openPage();
+    ok(await ev(`await navigator.serviceWorker.ready; for (let i=0;i<40 && !navigator.serviceWorker.controller;i++) await new Promise(r=>setTimeout(r,250)); return !!navigator.serviceWorker.controller`), 'service worker não assumiu a página');
+    await sleep(1200);
+    const direto = await ev(`try { const r = await fetch('https://nfce.dominio-que-nao-existe.invalid/qrcode?p=1'); return 'respondeu ' + r.status + ' com ' + (await r.text()).slice(0,15) } catch (e) { return 'falhou' }`);
+    eq(direto, 'falhou');
+    await goto('mercado');
+    const ui = await ev(`document.getElementById('mk-nfceBtn').click(); const i=document.getElementById('mk-nfceInput'); i.value='https://nfce.dominio-que-nao-existe.invalid/qrcode?p=35260912345678000199650010000012341000012345'; document.getElementById('mk-nfceAnalyzeBtn').click(); await new Promise(r=>setTimeout(r,200));
+      document.getElementById('mk-nfceAutoFetchBtn').click(); for (let k=0;k<40 && /Tentando/.test(document.getElementById('mk-nfceStatus').textContent);k++) await new Promise(r=>setTimeout(r,250));
+      const r={ status: document.getElementById('mk-nfceStatus').textContent, colado: document.getElementById('mk-nfcePasteArea').value.length }; document.getElementById('mk-nfceCancelBtn').click(); return r`);
+    ok(/Não foi possível buscar/.test(ui.status), ui.status); eq(ui.colado, 0, 'nada deve ser colado');
+  });
+
+  await test('rev2: editar quantidade/valor mantém a categoria escolhida à mão; renomear só reclassifica o que estava na categoria automática', async () => {
+    await withData({ 'cf-shopping-v1': { categories: ['Alimentos', 'Limpeza'], items: [{ id: 's1', name: 'Arroz 5kg', category: 'Limpeza', checked: false, order: 0 }, { id: 's2', name: 'Feijão', category: 'Alimentos', checked: false, order: 0 }] },
+      'cf-expenses-v1': { cycle: '2026-09', categories: ['Moradia', 'Contas', 'Outros'], items: [EX('e1', 'Aluguel', 1200, 20, 'Outros', false)] } });
+    await goto('compras');
+    const editSc = (id, name, qty) => ev(`document.querySelector('#sc-sections li[data-id="${id}"] .edit-btn').click(); await new Promise(r=>setTimeout(r,100)); const li=document.querySelector('#sc-sections li[data-id="${id}"]');
+      ${name == null ? '' : `li.querySelector('.edit-input:not(.qty-field)').value=${JSON.stringify(name)};`} li.querySelector('.qty-field').value='${qty}'; li.querySelector('.save-btn').click(); await new Promise(r=>setTimeout(r,200));
+      return JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.id==='${id}').category`);
+    eq(await editSc('s1', null, 2), 'Limpeza', 'só a quantidade mudou');
+    eq(await editSc('s1', 'Arroz integral', 2), 'Limpeza', 'renomear um item movido à mão mantém a categoria');
+    eq(await editSc('s2', 'Sabão em pó', 1), 'Limpeza', 'item na categoria automática acompanha o nome novo');
+    await goto('despesas');
+    const r = await ev(`const cat=()=>JSON.parse(localStorage.getItem('cf-expenses-v1')).items[0].category; const li=()=>document.querySelector('#ex-sections li[data-id="e1"]');
+      li().querySelector('.edit-btn').click(); await new Promise(r=>setTimeout(r,100)); li().querySelector('.amount-field').value='1300'; li().querySelector('.save-btn').click(); await new Promise(r=>setTimeout(r,200)); const aposValor=cat();
+      li().querySelector('.edit-btn').click(); await new Promise(r=>setTimeout(r,100)); li().querySelector('.name-field').value='Aluguel novo'; li().querySelector('.amount-field').value='0'; li().querySelector('.save-btn').click(); await new Promise(r=>setTimeout(r,200));
+      const recusado=!!li().querySelector('.amount-field'); li().querySelector('.cancel-btn').click(); await new Promise(r=>setTimeout(r,150));
+      return { aposValor, recusado, nomeNaTela: li().querySelector('.item-name').textContent, nomeSalvo: JSON.parse(localStorage.getItem('cf-expenses-v1')).items[0].name }`);
+    eq(r, { aposValor: 'Outros', recusado: true, nomeNaTela: 'Aluguel', nomeSalvo: 'Aluguel' }, 'valor inválido não pode deixar o nome trocado pela metade');
+  });
+
+  await test('rev2: um aviso que chega com uma confirmação aberta espera a vez (o OK do aviso não confirma a exclusão)', async () => {
+    await openPage(); await goto('compras');
+    const n = () => ev(`return JSON.parse(localStorage.getItem('cf-shopping-v1')).items.length`);
+    await ev(`document.querySelector('#sc-sections li[data-id="s2"] .delete-btn').click(); await new Promise(r=>setTimeout(r,150)); window.appAlert('Novo mês! 1 conta paga foi desmarcada.'); await new Promise(r=>setTimeout(r,200)); return 1`);
+    let d = await dlg(); ok(d.aberto && /Excluir "Feijão"/.test(d.msg) && d.cancelar, 'a pergunta deve continuar na tela: ' + JSON.stringify(d));
+    await clickId('app-dialog-cancel'); eq(await n(), 5, 'cancelar não exclui');
+    d = await dlg(); ok(d.aberto && /Novo mês/.test(d.msg) && !d.cancelar, 'depois vem o aviso: ' + JSON.stringify(d));
+    await clickId('app-dialog-ok'); eq((await dlg()).aberto, false); eq(await n(), 5);
+  });
+
+  await test('rev2: contas atrasadas aparecem no sino e na Visão geral', async () => {
+    await openPage();
+    eq(await ev(`return window.CF.expenses.overdue()`), { count: 2, total: 590 });
+    eq(norm(await txt('ovExpensesOverdue')), 'R$ 590,00');
+    const a = norm(await ev(`return document.querySelector('#notifPanel .alert').textContent`)); ok(/2 contas atrasadas/.test(a) && /R\$ 590,00/.test(a), a);
+    await withData({ 'cf-expenses-v1': { cycle: '2026-09', categories: ['Moradia'], items: [EX('a', 'Condomínio', 350, 10, 'Moradia', false)] }, 'cf-wishlist-v1': { items: [] } });
+    const r = await ev(`return { aceso: document.getElementById('notifBtn').classList.contains('has-alerts'), textos: [...document.querySelectorAll('#notifPanel .alert')].map(x=>x.textContent) }`);
+    ok(r.aceso, 'só com conta atrasada o sino deve acender'); eq(r.textos.length, 1); ok(/1 conta atrasada/.test(norm(r.textos[0])), r.textos[0]);
+  });
+
+  await test('rev2: app aberto de um dia para o outro atualiza vencimentos, sino e Visão geral ao voltar (sem perder o que está sendo editado)', async () => {
+    await openPage(); await goto('despesas');
+    const due = id => ev(`return document.querySelector('#ex-sections li[data-id="${id}"] .item-due').textContent`);
+    eq(await due('e6'), 'Vence amanhã');
+    await ev(`window.__setNow('2026-09-18T15:00:00Z'); document.dispatchEvent(new Event('visibilitychange')); await new Promise(r=>setTimeout(r,350)); return 1`);
+    eq(await due('e6'), 'Venceu dia 16'); eq(await due('e8'), 'Vence hoje');
+    eq(await ev(`return [window.CF.expenses.dueSoon().count, window.CF.expenses.overdue().count]`), [1, 4]);
+    eq(norm(await txt('ovExpensesOverdue')), 'R$ 804,90', 'a Visão geral também é atualizada');
+    await ev(`document.querySelector('#ex-sections li[data-id="e9"] .edit-btn').click(); await new Promise(r=>setTimeout(r,100)); document.querySelector('#ex-sections .name-field').value='Seguro novo';
+      window.__setNow('2026-09-19T15:00:00Z'); document.dispatchEvent(new Event('visibilitychange')); await new Promise(r=>setTimeout(r,350)); return 1`);
+    eq(await ev(`const f=document.querySelector('#ex-sections .name-field'); return f ? f.value : null`), 'Seguro novo', 'a edição em andamento não pode ser apagada pela atualização');
+  });
+
+  await test('rev2: vencimento na virada do mês: dia 1º/2 avisam antes, dia 31 em mês de 30 dias vence no dia 30', async () => {
+    const data = { 'cf-expenses-v1': { cycle: '2026-09', categories: ['Moradia'], items: [EX('a', 'Aluguel', 1200, 1, 'Moradia', true), EX('b', 'Escola', 500, 2, 'Moradia', true), EX('c', 'Seguro', 210, 31, 'Moradia', false), EX('d', 'Condomínio', 350, 1, 'Moradia', false), EX('e', 'Academia', 90, 4, 'Moradia', true)] } };
+    const lines = () => ev(`return [...document.querySelectorAll('#ex-sections li')].map(l=>l.querySelector('.item-name').textContent + ': ' + [...l.querySelectorAll('.item-due')].map(x=>x.textContent).join(' | '))`);
+    await withData(data, { now: '2026-09-29T15:00:00Z' }); await goto('despesas');
+    eq((await lines()).sort(), ['Academia: Vence dia 4', 'Aluguel: Próximo vencimento em 2 dias', 'Condomínio: Venceu dia 1', 'Escola: Próximo vencimento em 3 dias', 'Seguro: Vence amanhã']);
+    eq(await ev(`return window.CF.expenses.dueSoon()`), { count: 3, total: 1910 });
+    await withData(data, { now: '2026-09-30T15:00:00Z' }); await goto('despesas');
+    const l = await lines(); ok(l.includes('Seguro: Vence hoje') && l.includes('Aluguel: Próximo vencimento amanhã'), l.join(' / '));
+    await withData({ 'cf-expenses-v1': { cycle: '2026-09', categories: ['Moradia'], items: [EX('c', 'Seguro', 210, 31, 'Moradia', false)] } }, { now: '2026-10-01T15:00:00Z' }); await goto('despesas');
+    await ev(`if (document.getElementById('app-dialog-overlay').classList.contains('open')) document.getElementById('app-dialog-ok').click(); return 1`);
+    ok((await lines())[0].includes('Sem pagamento há 2 meses'), 'no mês seguinte o dia 31 não pago conta como atrasado: ' + (await lines())[0]);
+  });
+
+  await test('rev2: o filtro de loja/cidade se desfaz quando a última compra daquela loja é excluída', async () => {
+    await openPage(); await goto('mercado');
+    const r = await ev(`const s=document.getElementById('mk-storeFilter'); s.value='Atacado Demo'; s.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,150));
+      document.querySelector('#mk-groups details').open = true; [...document.querySelectorAll('#mk-groups .grp-actions button')].find(b=>b.textContent==='Excluir').click(); await new Promise(r=>setTimeout(r,250)); document.getElementById('app-dialog-ok').click(); await new Promise(r=>setTimeout(r,350));
+      return { valor: s.value, mostra: s.options[s.selectedIndex].textContent, resumo: document.getElementById('mk-groupsSub').textContent }`);
+    eq([r.valor, r.mostra], ['', 'Todas as lojas']); ok(/^2 ida/.test(r.resumo), r.resumo);
+  });
+
+  await test('rev2: mercado recusa quantidade/valor negativos e desconto maior que a compra; importação descarta data impossível e total negativo', async () => {
+    await openPage(); await goto('mercado');
+    const before = await ev(`return localStorage.getItem('cf-market-v1')`);
+    const tryRow = (q, v, desc) => ev(`document.getElementById('mk-addBtn').click(); await new Promise(r=>setTimeout(r,200)); document.getElementById('mk-fLoja').value='Loja X'; document.getElementById('mk-fDesconto').value='${desc}';
+      const row=document.querySelector('.mk-item-row'); row.querySelector('.mk-desc').value='Sabonete'; row.querySelector('.mk-qtd').value='${q}'; row.querySelector('.mk-vunit').value='${v}'; document.getElementById('mk-saveBtn').click(); await new Promise(r=>setTimeout(r,300));
+      const o=document.getElementById('app-dialog-overlay'); const msg=o.classList.contains('open') ? document.getElementById('app-dialog-message').textContent : ''; if (msg) document.getElementById('app-dialog-ok').click(); await new Promise(r=>setTimeout(r,200));
+      const aberto=document.getElementById('mk-overlay').classList.contains('open'); document.getElementById('mk-fLoja').value=''; document.getElementById('mk-fDesconto').value=''; row.querySelector('.mk-desc').value=''; row.querySelector('.mk-qtd').value='1'; row.querySelector('.mk-vunit').value='';
+      document.getElementById('mk-cancelBtn').click(); await new Promise(r=>setTimeout(r,200)); if (o.classList.contains('open')) { document.getElementById('app-dialog-ok').click(); await new Promise(r=>setTimeout(r,200)); }
+      return { msg, aberto, igual: localStorage.getItem('cf-market-v1') === ${JSON.stringify(before)} }`);
+    let r = await tryRow('-2', '3', ''); ok(/item válido/.test(r.msg) && r.aberto && r.igual, 'quantidade negativa: ' + JSON.stringify(r));
+    r = await tryRow('2', '-3', ''); ok(/item válido/.test(r.msg) && r.aberto && r.igual, 'valor negativo: ' + JSON.stringify(r));
+    r = await tryRow('2', '3', '500'); ok(/desconto/i.test(r.msg) && r.aberto && r.igual, 'desconto maior que a compra: ' + JSON.stringify(r));
+    r = await tryRow('2', '3', '-1'); ok(/desconto/i.test(r.msg) && r.aberto && r.igual, 'desconto negativo: ' + JSON.stringify(r));
+    const imp = await ev(`const dt=new DataTransfer(); dt.items.add(new File([JSON.stringify({items:[{data:'2026-13-45',loja:'Loja I',descricao:'DATA RUIM',qtde:1,valorUnit:3},{data:'2026-02-30',loja:'Loja I',descricao:'DIA RUIM',qtde:1,valorUnit:3},{data:'2026-09-05',loja:'Loja I',descricao:'TOTAL RUIM',qtde:2,valorUnit:3,valorTotal:-5}]})],'x.json'));
+      const i=document.getElementById('mk-importFile'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,300)); const pergunta=document.getElementById('app-dialog-message').textContent;
+      document.getElementById('app-dialog-ok').click(); await new Promise(r=>setTimeout(r,300)); document.getElementById('app-dialog-ok').click(); await new Promise(r=>setTimeout(r,200));
+      return { pergunta, itens: JSON.parse(localStorage.getItem('cf-market-v1')).items.filter(x=>x.loja==='Loja I').map(x=>x.descricao+'='+x.valorTotal) }`);
+    ok(/2 linha\(s\) inválida/.test(imp.pergunta), imp.pergunta); eq(imp.itens, ['TOTAL RUIM=6']);
+  });
+
+  await test('rev2: sugestões só oferecem o que dá para adicionar (comprados e já excluídos); escolher um comprado devolve o item à lista', async () => {
+    await openPage(); await goto('compras');
+    const sug = q => ev(`const i=document.getElementById('sc-newItemInput'); i.focus(); i.value=${JSON.stringify(q)}; i.dispatchEvent(new Event('input',{bubbles:true})); await new Promise(r=>setTimeout(r,120)); return [...document.querySelectorAll('.sc-suggestion-item')].map(x=>x.textContent)`);
+    const item = name => ev(`return JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.name===${JSON.stringify(name)}) || null`);
+    eq(await sug('arr'), [], 'item pendente não é sugerido (seria recusado)');
+    eq(await sug('caf'), ['Café']);
+    const r = await ev(`document.getElementById('sc-newItemInput').value='Café'; document.getElementById('sc-newQtyInput').value='2'; document.getElementById('sc-addBtn').click(); await new Promise(r=>setTimeout(r,250));
+      return { campo: document.getElementById('sc-newItemInput').value, status: document.getElementById('sc-status').textContent, total: JSON.parse(localStorage.getItem('cf-shopping-v1')).items.length }`);
+    const cafe = await item('Café'); eq([cafe.checked, cafe.qty, r.campo, r.total], [false, 2, '', 5]); ok(/voltou para a lista/.test(r.status), r.status);
+    await ev(`document.querySelector('#sc-sections li[data-id="s4"] .delete-btn').click(); await new Promise(r=>setTimeout(r,200)); document.getElementById('app-dialog-ok').click(); await new Promise(r=>setTimeout(r,250)); return 1`);
+    eq(await item('Detergente'), null); eq(await sug('deter'), ['Detergente'], 'o que já passou pela lista continua sendo sugerido');
+    await reload(false); await goto('compras'); eq(await sug('deter'), ['Detergente'], 'o histórico de nomes sobrevive ao recarregar');
+    await ev(`document.getElementById('sc-newItemInput').value='Detergente'; document.getElementById('sc-addBtn').click(); await new Promise(r=>setTimeout(r,250)); return 1`);
+    ok(await item('Detergente'), 'adicionado de novo'); eq(await sug('deter'), []);
+  });
+
+  await test('rev2: mensagens de aviso aparecem na tela mesmo com lista longa e são anunciadas por leitor de tela', async () => {
+    const items = Array.from({ length: 40 }, (_, i) => ({ id: 'x' + i, name: 'Item ' + i, category: 'Alimentos', checked: false, order: i }));
+    await withData({ 'cf-shopping-v1': { categories: ['Alimentos'], items } }); await goto('compras');
+    const r = await ev(`const s=document.getElementById('sc-status'); const vazio=getComputedStyle(s).display; const i=document.getElementById('sc-newItemInput'); i.value='Item 3'; document.getElementById('sc-addBtn').click(); await new Promise(r=>setTimeout(r,150)); const b=s.getBoundingClientRect();
+      return { vazio, msg: s.textContent, visivel: b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth && b.height > 0, live: ['sc-status','ex-status','wl-status','mk-status','mk-nfceStatus'].map(id=>document.getElementById(id).getAttribute('role')+'/'+document.getElementById(id).getAttribute('aria-live')) }`);
+    eq(r.vazio, 'none', 'sem mensagem o aviso não ocupa espaço'); ok(/já está na lista/.test(r.msg) && r.visivel, JSON.stringify(r)); eq(r.live, Array(5).fill('status/polite'));
+  });
+
+  await test('rev2: gráfico "Gasto por loja" não sobrepõe os rótulos de data com muitas idas (e mostra todos quando são poucas)', async () => {
+    const many = Array.from({ length: 28 }, (_, k) => MK('2026-08-' + String(k + 1).padStart(2, '0'), k % 2 ? 'Loja A' : 'Loja B', 'ARROZ', 1, 20 + k));
+    const labels = () => ev(`const tx=[...document.querySelectorAll('#mk-lineWrap svg text')].filter(t=>/^\\d\\d\\/\\d\\d$/.test(t.textContent)).map(t=>t.getBoundingClientRect()); let s=0; for (let i=1;i<tx.length;i++) if (tx[i].left < tx[i-1].right + 2) s++; return [tx.length, s]`);
+    await withData({ 'cf-market-v1': { items: many, discounts: [], settings: { monthlyGoal: null } } }, { width: 320 }); await goto('mercado');
+    const m = await labels(); ok(m[0] >= 4 && m[0] <= 14, 'quantidade de rótulos: ' + m[0]); eq(m[1], 0, 'rótulos sobrepostos');
+    await withData({ 'cf-market-v1': { items: many.slice(0, 3), discounts: [], settings: { monthlyGoal: null } } }); await goto('mercado');
+    eq(await labels(), [3, 0]);
+  });
+
+  await test('rev2: lista de desejos não apaga o que está sendo digitado ao registrar um preço; valor esperado ilegível avisa', async () => {
+    await openPage(); await goto('desejos');
+    const r = await ev(`document.querySelector('.wl-toggle-links').click(); await new Promise(r=>setTimeout(r,150)); const add=()=>document.querySelectorAll('.wl-link-add input');
+      add()[0].value='https://exemplo.com/novo'; add()[1].value='310'; const reg=document.querySelector('.wl-reg'); reg.querySelector('input').value='319,90'; reg.querySelector('button').click(); await new Promise(r=>setTimeout(r,300));
+      return { link: add()[0].value, preco: add()[1].value, campoRegistrado: document.querySelector('.wl-reg input').value, registros: JSON.parse(localStorage.getItem('cf-wishlist-v1')).items[0].links[0].history.length }`);
+    eq(r, { link: 'https://exemplo.com/novo', preco: '310', campoRegistrado: '', registros: 2 });
+    const f = await ev(`document.getElementById('wl-toggleForm').click(); document.getElementById('wl-name').value='Cafeteira'; document.getElementById('wl-price').value='abc'; document.getElementById('wl-submit').click(); await new Promise(r=>setTimeout(r,250));
+      return { salvo: JSON.parse(localStorage.getItem('cf-wishlist-v1')).items.some(x=>x.name==='Cafeteira'), nome: document.getElementById('wl-name').value, valor: document.getElementById('wl-price').value, status: document.getElementById('wl-status').textContent }`);
+    eq([f.salvo, f.nome, f.valor], [false, 'Cafeteira', 'abc']); ok(/valor esperado/i.test(f.status), f.status);
+  });
+
+  await test('rev2: despesas: soltar uma conta no mesmo lugar da ordem de vencimento explica por que ela não mudou', async () => {
+    await openPage(); await goto('despesas');
+    await ev(`document.querySelector('#ex-sections li[data-id="e1"]').scrollIntoView({block:'center'}); return 1`);
+    const rect = sel => ev(`const r=document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}`);
+    const dst = await rect('#ex-sections li[data-id="e1"]'), src = await rect('#ex-sections li[data-id="e2"] .drag-handle');
+    const mouse = (type, x, y) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+    await mouse('mouseMoved', src.x, src.y); await mouse('mousePressed', src.x, src.y);
+    for (let i = 1; i <= 10; i++) { await mouse('mouseMoved', src.x, src.y + (dst.y - 12 - src.y) * i / 10); await sleep(25); }
+    await mouse('mouseReleased', src.x, dst.y - 12); await sleep(300);
+    const r = await ev(`return { ordem: [...document.querySelectorAll('#ex-sections ul[data-category="Moradia"] li')].map(l=>l.dataset.id), status: document.getElementById('ex-status').textContent }`);
+    eq(r.ordem, ['e1', 'e2']); ok(/ordem de vencimento/.test(r.status), 'aviso: ' + r.status);
+  });
+
+  await test('rev2: fechar o formulário de compra com dados digitados pede confirmação (Cancelar, Esc e toque fora); vazio fecha direto', async () => {
+    await openPage(); await goto('mercado');
+    const aberto = () => ev(`return document.getElementById('mk-overlay').classList.contains('open')`);
+    await clickId('mk-addBtn'); await clickId('mk-cancelBtn'); eq([await aberto(), (await dlg()).aberto], [false, false], 'sem nada digitado fecha direto');
+    const fechar = { cancelar: `document.getElementById('mk-cancelBtn').click()`, esc: `document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`, fora: `document.getElementById('mk-overlay').dispatchEvent(new MouseEvent('click',{bubbles:true}))` };
+    for (const [nome, js] of Object.entries(fechar)) {
+      await clickId('mk-addBtn'); await ev(`const r=document.querySelector('.mk-item-row .mk-desc'); r.value='Sabonete'; r.dispatchEvent(new Event('input',{bubbles:true})); ${js}; await new Promise(r=>setTimeout(r,250)); return 1`);
+      const d = await dlg(); ok(d.aberto && /Descartar/.test(d.msg) && await aberto(), nome + ': deve perguntar antes de descartar ' + JSON.stringify(d));
+      await clickId('app-dialog-cancel'); eq([await aberto(), await ev(`return document.querySelector('.mk-item-row .mk-desc').value`)], [true, 'Sabonete'], nome + ': desistir mantém o formulário');
+      await ev(`${js}; await new Promise(r=>setTimeout(r,250)); return 1`); await clickId('app-dialog-ok'); eq(await aberto(), false, nome + ': confirmar descarta');
+    }
+  });
+
+  await test('rev2: teclado: caixas de marcar são checkbox focáveis (Espaço marca e o foco fica), "abrir →" é link de verdade e campos têm rótulo', async () => {
+    await openPage(); await goto('compras');
+    const box = await ev(`const b=document.querySelector('#sc-sections li[data-id="s1"] .box'); b.focus(); const antes={ role:b.getAttribute('role'), tab:b.tabIndex, checked:b.getAttribute('aria-checked'), nome:b.getAttribute('aria-label'), foco: document.activeElement===b };
+      b.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true})); await new Promise(r=>setTimeout(r,250)); const d=document.querySelector('#sc-sections li[data-id="s1"] .box');
+      return { antes, depois: { checked: d.getAttribute('aria-checked'), foco: document.activeElement===d, salvo: JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.id==='s1').checked } }`);
+    eq(box.antes, { role: 'checkbox', tab: 0, checked: 'false', nome: 'Arroz 5kg', foco: true }); eq(box.depois, { checked: 'true', foco: true, salvo: true });
+    await goto('despesas');
+    const exb = await ev(`const b=document.querySelector('#ex-sections li[data-id="e2"] .box'); b.focus(); const r=[b.getAttribute('role'), b.getAttribute('aria-checked'), b.getAttribute('aria-label')]; b.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})); await new Promise(r=>setTimeout(r,250));
+      const d=document.querySelector('#ex-sections li[data-id="e2"] .box'); return r.concat([d.getAttribute('aria-checked'), document.activeElement===d])`);
+    eq(exb, ['checkbox', 'false', 'Condomínio', 'true', true]);
+    await goto('overview');
+    const link = await ev(`const a=document.querySelector('.ov-link[data-goto="despesas"]'); const tem=a.hasAttribute('href'); a.click(); await new Promise(r=>setTimeout(r,200)); return [tem, document.getElementById('pageTitle').textContent, location.href.includes('#')]`);
+    eq(link, [true, 'Despesas fixas', false], 'o link não pode deixar "#" no endereço');
+    await goto('mercado'); await clickId('mk-addBtn'); await goto('comparador').catch(() => {});
+    const semNome = await ev(`const nome=e=>!!(e.getAttribute('aria-label') || (e.labels && e.labels.length) || e.getAttribute('aria-labelledby')); return [...document.querySelectorAll('.app-shell input:not([type=hidden]):not([type=file]), .app-shell select, .app-shell textarea, .overlay input:not([type=file]), .overlay select, .overlay textarea')].filter(e=>!nome(e)).map(e=>e.id || e.className || e.placeholder)`);
+    eq(semNome, [], 'campos sem nome acessível');
   });
 
   /* ================================================================ 9. PWA offline (por último: derruba o servidor) */
