@@ -866,13 +866,13 @@ async function launch(port) {
   });
 
   await test('rev2: um aviso que chega com uma confirmação aberta espera a vez (o OK do aviso não confirma a exclusão)', async () => {
-    await openPage(); await goto('compras');
-    const n = () => ev(`return JSON.parse(localStorage.getItem('cf-shopping-v1')).items.length`);
-    await ev(`document.querySelector('#sc-sections li[data-id="s2"] .delete-btn').click(); await new Promise(r=>setTimeout(r,150)); window.appAlert('Novo mês! 1 conta paga foi desmarcada.'); await new Promise(r=>setTimeout(r,200)); return 1`);
-    let d = await dlg(); ok(d.aberto && /Excluir "Feijão"/.test(d.msg) && d.cancelar, 'a pergunta deve continuar na tela: ' + JSON.stringify(d));
-    await clickId('app-dialog-cancel'); eq(await n(), 5, 'cancelar não exclui');
+    await openPage(); await goto('desejos');
+    const n = () => ev(`return JSON.parse(localStorage.getItem('cf-wishlist-v1')).items.length`);
+    await ev(`document.querySelector('#wl-list .wl-item .icon-btn').click(); await new Promise(r=>setTimeout(r,150)); window.appAlert('Novo mês! 1 conta paga foi desmarcada.'); await new Promise(r=>setTimeout(r,200)); return 1`);
+    let d = await dlg(); ok(d.aberto && /Excluir "Air fryer"/.test(d.msg) && d.cancelar, 'a pergunta deve continuar na tela: ' + JSON.stringify(d));
+    await clickId('app-dialog-cancel'); eq(await n(), 2, 'cancelar não exclui');
     d = await dlg(); ok(d.aberto && /Novo mês/.test(d.msg) && !d.cancelar, 'depois vem o aviso: ' + JSON.stringify(d));
-    await clickId('app-dialog-ok'); eq((await dlg()).aberto, false); eq(await n(), 5);
+    await clickId('app-dialog-ok'); eq((await dlg()).aberto, false); eq(await n(), 2);
   });
 
   await test('rev2: contas atrasadas aparecem no sino e na Visão geral', async () => {
@@ -1149,6 +1149,100 @@ async function launch(port) {
     await withData({ 'cf-meta-v1': { firstSeen: NOW15 - 90 * DAY, lastBackup: NOW15 - 31 * DAY } }); b = await bell(); eq(b.length, 1); ok(/há 31 dias/.test(b[0]), b[0]);
     await openPage({ seed: false }); await ev(`localStorage.setItem('cf-meta-v1', JSON.stringify({ firstSeen: ${NOW15 - 60 * DAY}, lastBackup: null })); return 1`); await reload(false);
     eq(await bell(), [], 'sem dados não há o que guardar'); eq(await ev(`return document.getElementById('notifBtn').classList.contains('has-alerts')`), false);
+  });
+
+  /* ================================================================ 8f. Fluidez */
+  group('Fluidez: navegação, toque, desempenho e desfazer');
+  await test('fl: o leitor de PDF não é carregado na abertura (só quando um PDF é escolhido) e o index.html ficou leve', async () => {
+    await openPage();
+    eq(await ev(`return [typeof window.pdfjsLib, !!document.getElementById('pdfWorkerSource'), [...document.scripts].filter(s=>/pdf/.test(s.src)).length]`), ['undefined', false, 0]);
+    const kb = Math.round(fs.statSync(INDEX).size / 1024); ok(kb < 450, 'index.html com ' + kb + ' KB');
+  });
+  await test('fl: um PDF de verdade é lido (leitor carregado na hora) e os itens saem certos', async () => {
+    await openPage(); await goto('mercado');
+    const r = await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150)); const b=await (await fetch('tests/fixtures/nfce-ficticia.pdf')).blob();
+      const dt=new DataTransfer(); dt.items.add(new File([b],'nota.pdf',{type:'application/pdf'})); const i=document.getElementById('mk-nfcePdfInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
+      const st=document.getElementById('mk-nfcePdfStatus'); for (let k=0;k<100 && !/PDF lido|Não consegui/.test(st.textContent);k++) await new Promise(r=>setTimeout(r,150));
+      document.getElementById('mk-nfceParseBtn').click(); await new Promise(r=>setTimeout(r,200));
+      const out={ status: st.textContent, lib: typeof window.pdfjsLib, itens: [...document.querySelectorAll('#mk-nfcePreviewTable tr')].slice(1).map(tr=>[...tr.children].slice(0,2).map(td=>td.textContent).join('=')) }; document.getElementById('mk-nfceCancelBtn').click(); return out`);
+    ok(/PDF lido \(1 página\)/.test(r.status), r.status); eq([r.lib, r.itens], ['object', ['ARROZ TIPO 1 5KG=1', 'FEIJAO CARIOCA 1KG=2']]);
+  });
+  await test('fl: barra inferior troca de tela com um toque, marca a tela atual e não cobre o conteúdo nem os avisos', async () => {
+    await openPage();
+    const r = await ev(`const nav=document.getElementById('bottomNav'); const bs=[...nav.querySelectorAll('button')]; const out={ itens: bs.map(b=>b.dataset.nav), nomes: bs.map(b=>b.textContent.trim()) };
+      const ativo=()=>bs.filter(b=>b.classList.contains('active')).map(b=>b.dataset.nav+':'+b.getAttribute('aria-current')); out.inicio=ativo();
+      bs.find(b=>b.dataset.nav==='despesas').click(); await new Promise(r=>setTimeout(r,150)); out.titulo=document.getElementById('pageTitle').textContent; out.depois=ativo();
+      document.querySelector('[data-view="comparador"]').click(); await new Promise(r=>setTimeout(r,150)); out.foraDaBarra=ativo();
+      bs.find(b=>b.dataset.nav==='compras').click(); await new Promise(r=>setTimeout(r,150)); window.scrollTo(0, document.documentElement.scrollHeight); await new Promise(r=>setTimeout(r,100));
+      const navTop=nav.getBoundingClientRect().top; out.fixa = Math.round(nav.getBoundingClientRect().bottom) === innerHeight; out.ultimoVisivel = document.getElementById('sc-resetBtn').getBoundingClientRect().bottom <= navTop;
+      const i=document.getElementById('sc-newItemInput'); i.value='Arroz 5kg'; document.getElementById('sc-addBtn').click(); await new Promise(r=>setTimeout(r,150)); out.avisoAcima = document.getElementById('sc-status').getBoundingClientRect().bottom <= navTop;
+      out.alturaBotoes = Math.min(...bs.map(b=>b.getBoundingClientRect().height)); return out`);
+    eq(r.itens, ['overview', 'compras', 'despesas', 'mercado', 'desejos']); eq(r.nomes, ['Início', 'Compras', 'Despesas', 'Mercado', 'Desejos']);
+    eq([r.inicio, r.titulo, r.depois, r.foraDaBarra], [['overview:page'], 'Despesas fixas', ['despesas:page'], []]);
+    eq([r.fixa, r.ultimoVisivel, r.avisoAcima], [true, true, true]); ok(r.alturaBotoes >= 44, 'altura ' + r.alturaBotoes);
+  });
+  await test('fl: todo controle tocável tem pelo menos 40 px (telas, edição, links de desejos e modais)', async () => {
+    await openPage();
+    const small = await ev(`const vis=e=>e.getClientRects().length>0; const out=[]; const SEL='button, a, summary, select, input:not([type=file]), textarea, label.file-btn';
+      const scan=(root,tag)=>[...root.querySelectorAll(SEL)].filter(vis).forEach(e=>{ const r=e.getBoundingClientRect(); if (r.width<39.5||r.height<39.5) out.push(tag+': '+((e.className&&String(e.className).split(' ')[0])||e.id||e.tagName)+' '+Math.round(r.width)+'x'+Math.round(r.height)); });
+      for (const v of ['overview','compras','despesas','mercado','comparador','desejos']) { document.querySelector('[data-view="'+v+'"]').click(); await new Promise(r=>setTimeout(r,120));
+        if (v==='desejos') { document.querySelector('.wl-toggle-links').click(); await new Promise(r=>setTimeout(r,100)); document.querySelector('.wl-hist').open=true; document.getElementById('wl-toggleForm').click(); await new Promise(r=>setTimeout(r,100)); }
+        if (v==='compras'||v==='despesas') { scan(document.getElementById('view-'+v), v); document.querySelector('#view-'+v+' .cat-toggle').click(); document.querySelector('#view-'+v+' li .edit-btn').click(); await new Promise(r=>setTimeout(r,120)); }
+        if (v==='mercado') { document.getElementById('mk-pcSearch').value='arroz'; document.getElementById('mk-pcSearch').dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('#mk-groups details').open=true; await new Promise(r=>setTimeout(r,120)); }
+        scan(document.getElementById('view-'+v), v); }
+      scan(document.getElementById('bottomNav'), 'barra'); scan(document.querySelector('.topbar'), 'topo');
+      document.querySelector('[data-view="mercado"]').click(); document.getElementById('mk-addBtn').click(); await new Promise(r=>setTimeout(r,200)); scan(document.getElementById('mk-overlay'), 'modal compra'); document.getElementById('mk-cancelBtn').click(); await new Promise(r=>setTimeout(r,200));
+      document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); scan(document.getElementById('mk-nfceOverlay'), 'modal nfce'); document.getElementById('mk-nfceCancelBtn').click();
+      document.getElementById('menuBtn').click(); await new Promise(r=>setTimeout(r,300)); scan(document.getElementById('drawer'), 'menu');
+      return [...new Set(out)]`);
+    eq(small, []);
+    await openPage(); await goto('compras');
+    const box = await ev(`const b=document.querySelector('#sc-sections li .box'), r=b.getBoundingClientRect(); const hit=(x,y)=>document.elementFromPoint(x,y)===b; return [hit(r.left-8,r.top+12), hit(r.left+12,r.top-8), hit(r.right+7,r.top+12), hit(r.left+12,r.bottom+8)]`);
+    eq(box, [true, true, true, true], 'a área de toque da caixa de marcar vai além do desenho');
+  });
+  await test('fl: marcar um item ou uma conta troca só aquela linha (o resto da lista não é recriado) e atualiza os totais', async () => {
+    await openPage(); await goto('compras');
+    const sc = await ev(`const li=id=>document.querySelector('#sc-sections li[data-id="'+id+'"]'); const outro=li('s1'), secao=outro.closest('.section'); window.scrollTo(0,120); const y=scrollY;
+      const antes={ est: document.getElementById('sc-estimateValue').textContent, prog: document.getElementById('sc-progressLabel').textContent, sec: secao.querySelector('.section-count').textContent };
+      li('s2').querySelector('.box').click(); await new Promise(r=>setTimeout(r,200));
+      return { antes, depois: { est: document.getElementById('sc-estimateValue').textContent, prog: document.getElementById('sc-progressLabel').textContent, sec: secao.querySelector('.section-count').textContent },
+        mesmaLinha: li('s1')===outro, mesmaSecao: outro.closest('.section')===secao && document.contains(secao), marcado: li('s2').classList.contains('checked'), aria: li('s2').querySelector('.box').getAttribute('aria-checked'), rolagem: scrollY===y, salvo: JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.id==='s2').checked }`);
+    eq([norm(sc.antes.est), sc.antes.prog, sc.antes.sec], ['R$ 10,70', '2 de 5', '1 de 3']); eq([norm(sc.depois.est), sc.depois.prog, sc.depois.sec], ['R$ 2,90', '3 de 5', '2 de 3']);
+    eq([sc.mesmaLinha, sc.mesmaSecao, sc.marcado, sc.aria, sc.rolagem, sc.salvo], [true, true, true, 'true', true, true]);
+    await goto('despesas');
+    const ex = await ev(`const li=id=>document.querySelector('#ex-sections li[data-id="'+id+'"]'); const outro=li('e1'); const sec=()=>li('e2').closest('.section').querySelector('.section-count').textContent;
+      const antes=[document.getElementById('ex-paidValue').textContent, sec(), window.CF.expenses.overdue().count]; li('e2').querySelector('.box').click(); await new Promise(r=>setTimeout(r,200));
+      return { antes, depois: [document.getElementById('ex-paidValue').textContent, sec(), window.CF.expenses.overdue().count], mesmaLinha: li('e1')===outro, paga: li('e2').classList.contains('paid') && !li('e2').classList.contains('overdue'), sino: [...document.querySelectorAll('#notifPanel .alert')][0].textContent }`);
+    eq(ex.antes.map(norm), ['R$ 1.940,00', 'R$ 1.200,00 de R$ 1.550,00', '2']); eq(ex.depois.map(norm), ['R$ 2.290,00', 'R$ 1.550,00 de R$ 1.550,00', '1']);
+    eq([ex.mesmaLinha, ex.paga], [true, true]); ok(/1 conta atrasada/.test(norm(ex.sino)), ex.sino);
+  });
+  await test('fl: histórico longo do Mercado: mostra 30 idas por vez e só monta a tabela de itens ao abrir a ida', async () => {
+    const items = []; for (let t = 0; t < 70; t++) { const d = new Date(2026, 8, 14 - t * 3); const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      for (let k = 0; k < 20; k++) items.push(MK(iso, 'Loja ' + (t % 3), 'PRODUTO ' + k, 1, 2 + k)); }
+    await withData({ 'cf-market-v1': { items, discounts: [], settings: { monthlyGoal: null } } }); await goto('mercado');
+    const r = await ev(`const g=document.getElementById('mk-groups'); const out={ idas: g.querySelectorAll('details').length, tabelas: g.querySelectorAll('table').length, resumo: document.getElementById('mk-groupsSub').textContent, mais: (g.querySelector('.mk-more')||{}).textContent };
+      const d=g.querySelector('details'); d.open=true; await new Promise(r=>setTimeout(r,150)); out.linhasAoAbrir=d.querySelectorAll('table tr').length; out.tabelasDepois=g.querySelectorAll('table').length;
+      g.querySelector('.mk-more').click(); await new Promise(r=>setTimeout(r,150)); out.idasDepois=g.querySelectorAll('details').length; out.mais2=(g.querySelector('.mk-more')||{}).textContent;
+      g.querySelector('.mk-more').click(); await new Promise(r=>setTimeout(r,150)); out.idasFim=g.querySelectorAll('details').length; out.temMais=!!g.querySelector('.mk-more');
+      const s=document.getElementById('mk-searchBox'); s.value='PRODUTO 7'; s.dispatchEvent(new Event('input',{bubbles:true})); await new Promise(r=>setTimeout(r,150)); out.filtrado=g.querySelectorAll('details').length; out.nos=document.querySelectorAll('#view-mercado *').length; return out`);
+    eq([r.idas, r.tabelas, r.linhasAoAbrir, r.tabelasDepois, r.idasDepois, r.idasFim, r.temMais, r.filtrado], [30, 0, 21, 1, 60, 70, false, 30]);
+    ok(/^70 ida/.test(r.resumo), r.resumo); ok(/40/.test(r.mais) && /10/.test(r.mais2), r.mais + ' / ' + r.mais2); ok(r.nos < 2500, 'nós na tela: ' + r.nos);
+  });
+  await test('fl: excluir item ou conta não pede confirmação: some na hora e dá para desfazer; o aviso some sozinho', async () => {
+    await openPage(); await goto('compras');
+    const names = k => ev(`return JSON.parse(localStorage.getItem('${k}')).items.map(x=>x.name)`);
+    const undo = () => ev(`const t=document.getElementById('undo-toast'); return { visivel: !t.hidden && t.getClientRects().length>0, msg: document.getElementById('undo-msg').textContent, acimaDaBarra: t.getBoundingClientRect().bottom <= document.getElementById('bottomNav').getBoundingClientRect().top }`);
+    const ordem = () => ev(`return [...document.querySelectorAll('#sc-sections li .item-label')].map(x=>x.textContent)`); const antes = await ordem();
+    await ev(`document.querySelector('#sc-sections li[data-id="s2"] .delete-btn').click(); await new Promise(r=>setTimeout(r,250)); return 1`);
+    eq((await dlg()).aberto, false, 'sem diálogo'); eq((await names('cf-shopping-v1')).includes('Feijão'), false);
+    let u = await undo(); ok(u.visivel && /Feijão/.test(u.msg) && u.acimaDaBarra, JSON.stringify(u));
+    await clickId('undo-btn'); eq(await ordem(), antes, 'volta para o mesmo lugar'); eq((await names('cf-shopping-v1')).includes('Feijão'), true); eq((await undo()).visivel, false);
+    await goto('despesas');
+    await ev(`document.querySelector('#ex-sections li[data-id="e4"] .delete-btn').click(); await new Promise(r=>setTimeout(r,250)); return 1`);
+    eq([(await dlg()).aberto, (await names('cf-expenses-v1')).includes('Energia elétrica')], [false, false]); eq(norm(await txt('ex-totalValue')), 'R$ 2.754,80');
+    await clickId('undo-btn'); eq((await names('cf-expenses-v1')).includes('Energia elétrica'), true); eq(norm(await txt('ex-totalValue')), 'R$ 2.994,80');
+    await ev(`document.querySelector('#ex-sections li[data-id="e4"] .delete-btn').click(); return 1`); await sleep(8000);
+    eq([(await undo()).visivel, (await names('cf-expenses-v1')).includes('Energia elétrica')], [false, false], 'sem desfazer, a exclusão vale');
   });
 
   /* ================================================================ 9. PWA offline (por último: derruba o servidor) */

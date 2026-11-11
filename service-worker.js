@@ -5,7 +5,7 @@
 // em segundo plano": abre rápido usando a cópia salva, e atualiza o cache pra
 // próxima vez sempre que houver conexão.
 
-const CACHE_NAME = 'controle-financeiro-v4';
+const CACHE_NAME = 'controle-financeiro-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,8 @@ const ASSETS = [
   './icon-512.png',
   './icon-maskable-192.png',
   './icon-maskable-512.png',
+  './vendor/pdf.min.js',          // leitor de PDF (NFC-e), carregado só quando um PDF é escolhido
+  './vendor/pdf.worker.min.js',
   './vendor/jsQR.js',   // leitor de QR Code (NFC-e), carregado só quando a câmera/foto é usada
 ];
 
