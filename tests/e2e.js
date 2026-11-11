@@ -116,7 +116,7 @@ async function launch(port) {
   await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
 
   let scriptIds = [];
-  async function openPage({ seed = true, width = 390, height = 844, now = DEFAULT_NOW, tz = 'America/Sao_Paulo' } = {}) {
+  async function openPage({ seed = true, width = 390, height = 844, now = DEFAULT_NOW, tz = 'America/Sao_Paulo', stubs = [] } = {}) {
     for (const s of scriptIds) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: s });
     scriptIds = [];
     await send('Storage.clearDataForOrigin', { origin: BASE.replace(/\/$/, ''), storageTypes: 'all' });
@@ -124,6 +124,7 @@ async function launch(port) {
     await send('Emulation.setTouchEmulationEnabled', { enabled: width < 700, maxTouchPoints: 5 });
     scriptIds.push((await send('Page.addScriptToEvaluateOnNewDocument', { source: dateMock(now) })).result.identifier);
     if (seed) scriptIds.push((await send('Page.addScriptToEvaluateOnNewDocument', { source: SEED })).result.identifier);
+    for (const src of stubs.filter(Boolean)) scriptIds.push((await send('Page.addScriptToEvaluateOnNewDocument', { source: src })).result.identifier);   // simulações (ex.: câmera)
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 700 });
     await reload(true);
   }
@@ -718,6 +719,110 @@ async function launch(port) {
     eq(r, { aberto1: true, depoisCancelar: 3, depoisConfirmar: 0, aberto2: true, cCancelar: 2, cConfirmar: 0 });
   });
 
+  /* ================================================================ 8b. NFC-e: QR Code pela câmera */
+  group('NFC-e: ler o QR Code pela câmera ou por foto');
+  // Câmera simulada: getUserMedia devolve o vídeo de um <canvas> mostrando uma imagem de teste (QR Codes fictícios em tests/fixtures).
+  // Pedidos a outros sites são interceptados (nada sai para a internet): por padrão falham, como o bloqueio da Sefaz.
+  const CAM_STUB = `(function(){
+    var cam = window.__cam = { calls: [], mode: window.__camMode || 'ok', image: window.__camImage === undefined ? 'tests/fixtures/qr-nfce.png' : window.__camImage, tracks: [] };
+    var ext = window.__ext = { calls: [], reply: null };
+    var realFetch = window.fetch.bind(window);
+    window.fetch = function (u, i) { u = String(u); if (!/^https?:/i.test(u) || u.indexOf(location.origin) === 0) return realFetch(u, i); ext.calls.push(u); return ext.reply ? Promise.resolve(new Response(ext.reply, { status: 200 })) : Promise.reject(new TypeError('Failed to fetch')); };
+    if (window.__camMode === 'unsupported') { try { Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true }); } catch (e) {} return; }
+    navigator.mediaDevices.getUserMedia = async function (c) {
+      cam.calls.push(c);
+      if (cam.mode === 'denied') throw new DOMException('Permission denied', 'NotAllowedError');
+      if (cam.mode === 'nocam') throw new DOMException('Requested device not found', 'NotFoundError');
+      if (cam.mode === 'slow') await new Promise(function (r) { setTimeout(r, 700); });   // o aparelho ainda está perguntando a permissão
+      var img = null; if (cam.image) { img = new Image(); img.src = cam.image; await img.decode(); }
+      var cv = document.createElement('canvas'); cv.width = 640; cv.height = 480; var cx = cv.getContext('2d');
+      var draw = function () { cx.fillStyle = '#fff'; cx.fillRect(0, 0, 640, 480); if (img) cx.drawImage(img, 170, 90, 300, 300); };
+      draw(); setInterval(draw, 100);
+      var st = cv.captureStream(10); st.getTracks().forEach(function (t) { cam.tracks.push(t); }); return st;
+    };
+  })();`;
+  const CHAVE = '35260912345678000199650010000012341000012342';
+  const openScan = async (pre = '') => { await openPage({ stubs: [pre, CAM_STUB] }); await goto('mercado'); await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); return 1`); };
+  const scanState = () => ev(`const g=id=>document.getElementById(id); return { url: g('mk-nfceInput').value, aberto: !g('mk-nfceScanner').hidden, msg: g('mk-nfceScanStatus').textContent, status: g('mk-nfceStatus').textContent, colado: g('mk-nfcePasteArea').value,
+    info: g('mk-nfceDecoded').style.display !== 'none' ? g('mk-nfceDecodedInfo').textContent : '', ligadas: window.__cam.tracks.filter(t=>t.readyState==='live').length, cameras: window.__cam.tracks.length, pedidos: window.__ext.calls }`);
+  const photo = file => ev(`const b = ${file ? `await (await fetch(${JSON.stringify(file)})).blob()` : `await new Promise(r => { const c=document.createElement('canvas'); c.width=300; c.height=300; const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,300,300); x.fillStyle='#333'; x.fillRect(40,40,90,60); c.toBlob(r,'image/png'); })`};
+    const dt=new DataTransfer(); dt.items.add(new File([b],'foto.png',{type:'image/png'})); const i=document.getElementById('mk-nfcePhotoInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
+    const s=document.getElementById('mk-nfceScanStatus'); for (let k=0;k<60 && (!s.textContent || /Lendo/.test(s.textContent));k++) await new Promise(r=>setTimeout(r,150)); await new Promise(r=>setTimeout(r,400)); return 1`);
+
+  await test('qr: a câmera lê o QR Code, preenche o link, analisa a chave, desliga a câmera e tenta buscar a nota', async () => {
+    await openScan();
+    await ev(`document.getElementById('mk-nfceScanBtn').click(); return 1`);
+    await waitFor(`document.getElementById('mk-nfceInput').value.length > 0`, 12000); await sleep(700);
+    const s = await scanState();
+    ok(s.url.startsWith('https://www.nfce.fazenda.sp.gov.br/qrcode?p=' + CHAVE), 'link: ' + s.url);
+    ok(/SP/.test(s.info) && /12\.345\.678\/0001-99/.test(s.info) && /1234/.test(s.info), 'chave analisada: ' + s.info);
+    eq([s.aberto, s.cameras, s.ligadas], [false, 1, 0], 'leitor fechado e câmera desligada');
+    eq(s.pedidos, [s.url], 'tenta buscar a nota uma vez'); ok(/Não foi possível buscar/.test(s.status), s.status); eq(s.colado, '');
+    const c = (await ev(`return window.__cam.calls`))[0]; eq([c.audio, c.video && c.video.facingMode && c.video.facingMode.ideal], [false, 'environment'], 'pede só vídeo, câmera traseira');
+  });
+  await test('qr: quando o portal responde, o texto da nota já fica pronto para processar', async () => {
+    await openScan();
+    await ev(`window.__ext.reply = '<html><body><script>var x=1</scr'+'ipt><p>ARROZ TIPO 1 5KG (Código: 7)</p>\\n<p>Qtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90</p></body></html>'; document.getElementById('mk-nfceScanBtn').click(); return 1`);
+    await waitFor(`document.getElementById('mk-nfcePasteArea').value.length > 0`, 12000);
+    const s = await scanState(); ok(/ARROZ TIPO 1 5KG/.test(s.colado) && !/var x/.test(s.colado), s.colado); ok(/Consegui buscar/.test(s.status), s.status);
+  });
+  await test('qr: câmera negada ou inexistente explica o que fazer e oferece a foto; sem suporte, só a foto aparece', async () => {
+    await openScan(`window.__camMode='denied';`); await ev(`document.getElementById('mk-nfceScanBtn').click(); await new Promise(r=>setTimeout(r,500)); return 1`);
+    let s = await scanState(); ok(/bloquead|permiss/i.test(s.msg) && /foto/i.test(s.msg), s.msg); eq([s.aberto, s.url], [false, '']);
+    await openScan(`window.__camMode='nocam';`); await ev(`document.getElementById('mk-nfceScanBtn').click(); await new Promise(r=>setTimeout(r,500)); return 1`);
+    s = await scanState(); ok(/câmera/i.test(s.msg) && /foto/i.test(s.msg), s.msg); eq(s.aberto, false);
+    await openScan(`window.__camMode='unsupported';`);
+    eq(await ev(`const b=document.getElementById('mk-nfceScanBtn'), p=document.getElementById('mk-nfcePhotoInput'); return [b.hidden, getComputedStyle(b).display, !!p, p.accept, p.getAttribute('capture')]`), [true, 'none', true, 'image/*', null], 'sem capture: no iPhone dá para tirar a foto OU escolher uma da galeria');
+  });
+  await test('qr: foto do cupom: lê o QR Code; sem QR Code, QR que não é de nota e link fora do gov.br são tratados', async () => {
+    await openScan(); await photo('tests/fixtures/qr-nfce.png');
+    let s = await scanState(); ok(s.url.includes(CHAVE) && /SP/.test(s.info), JSON.stringify(s)); eq(s.pedidos.length, 1); eq(s.cameras, 0, 'a foto não liga a câmera');
+    await openScan(); await photo(null);
+    s = await scanState(); ok(/Não encontrei/.test(s.msg), s.msg); eq(s.url, '');
+    await openScan(); await photo('tests/fixtures/qr-texto.png');
+    s = await scanState(); ok(/não parece ser de uma NFC-e/.test(s.msg), s.msg); eq([s.url, s.pedidos.length], ['', 0]);
+    await openScan(); await photo('tests/fixtures/qr-outro-site.png');
+    s = await scanState(); ok(s.url.startsWith('https://loja.exemplo.com/'), s.url); eq(s.pedidos, [], 'link fora do gov.br não é buscado sozinho'); ok(/gov\.br/.test(s.msg), s.msg); ok(/SP/.test(s.info), 'a chave ainda é analisada');
+  });
+  await test('qr: "Parar", Cancelar, Esc e sair do app desligam a câmera; reabrir o modal começa limpo', async () => {
+    const start = async () => { await ev(`document.getElementById('mk-nfceScanBtn').click(); return 1`); await waitFor(`!document.getElementById('mk-nfceScanner').hidden && window.__cam.tracks.some(t=>t.readyState==='live')`, 8000); };
+    const fechar = { parar: `document.getElementById('mk-nfceScanStop').click()`, cancelar: `document.getElementById('mk-nfceCancelBtn').click()`, esc: `document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`,
+      segundoPlano: `Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true}); document.dispatchEvent(new Event('visibilitychange')); delete document.visibilityState` };
+    for (const [nome, js] of Object.entries(fechar)) {
+      await openScan(`window.__camImage='';`); await start();
+      await ev(`${js}; await new Promise(r=>setTimeout(r,300)); return 1`);
+      const s = await scanState(); eq([s.aberto, s.ligadas], [false, 0], nome);
+    }
+    await ev(`document.getElementById('mk-nfceCancelBtn').click(); await new Promise(r=>setTimeout(r,150)); document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); return 1`);
+    const s = await scanState(); eq([s.aberto, s.msg, s.url], [false, '', '']);
+  });
+  await test('qr: foto com muito ruído (pouca luz), girada e em tamanho de celular ainda é lida', async () => {
+    // ruído determinístico de ±60 por pixel sobre o QR Code girado 12°, numa "foto" de 1280×960 (sem suavizar, o leitor não acha o código)
+    const noisy = `await (async () => { const img=new Image(); img.src='tests/fixtures/qr-nfce.png'; await img.decode(); const c=document.createElement('canvas'); c.width=1280; c.height=960; const x=c.getContext('2d');
+      x.fillStyle='#b9b4a8'; x.fillRect(0,0,1280,960); x.translate(640,480); x.rotate(12*Math.PI/180); x.drawImage(img,-210,-210,420,420); x.setTransform(1,0,0,1,0,0);
+      const d=x.getImageData(0,0,1280,960), p=d.data; let s=7; for (let i=0;i<p.length;i+=4){ s=(s*1664525+1013904223)>>>0; const n=(s/4294967296-0.5)*120; p[i]+=n; p[i+1]+=n; p[i+2]+=n; } x.putImageData(d,0,0);
+      return new Promise(r=>c.toBlob(r,'image/png')); })()`;
+    await openScan();
+    await ev(`const b = ${noisy}; const dt=new DataTransfer(); dt.items.add(new File([b],'foto.png',{type:'image/png'})); const i=document.getElementById('mk-nfcePhotoInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
+      const st=document.getElementById('mk-nfceScanStatus'); for (let k=0;k<100 && (!st.textContent || /Lendo/.test(st.textContent));k++) await new Promise(r=>setTimeout(r,150)); await new Promise(r=>setTimeout(r,300)); return 1`);
+    const s = await scanState(); ok(s.url.includes(CHAVE), 'não leu a foto com ruído: ' + s.msg);
+  });
+  await test('qr: fechar o modal enquanto o aparelho ainda pede a permissão não deixa a câmera ligada depois', async () => {
+    await openScan(`window.__camMode='slow';`);
+    await ev(`document.getElementById('mk-nfceScanBtn').click(); await new Promise(r=>setTimeout(r,150)); document.getElementById('mk-nfceCancelBtn').click(); await new Promise(r=>setTimeout(r,1300)); return 1`);
+    const s = await scanState(); eq([s.cameras, s.ligadas, s.aberto, s.url], [1, 0, false, ''], 'a câmera entregue depois do fechamento tem de ser desligada');
+    eq(await ev(`return document.getElementById('mk-nfceOverlay').classList.contains('open')`), false);
+  });
+  await test('qr: o leitor cabe no modal em 320 px e o vídeo toca sem tela cheia no iPhone (playsinline, mudo)', async () => {
+    await openPage({ stubs: [`window.__camImage='';`, CAM_STUB], width: 320 }); await goto('mercado');
+    await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); document.getElementById('mk-nfceScanBtn').click(); return 1`);
+    await waitFor(`!document.getElementById('mk-nfceScanner').hidden && document.getElementById('mk-nfceVideo').videoWidth > 0`, 8000);
+    const r = await ev(`const v=document.getElementById('mk-nfceVideo'), b=v.getBoundingClientRect(), m=document.querySelector('#mk-nfceOverlay .modal').getBoundingClientRect();
+      return { dentro: b.left >= m.left - 0.5 && b.right <= m.right + 0.5 && b.width > 150, rolagem: Math.max(0, document.documentElement.scrollWidth - innerWidth), inline: v.playsInline, mudo: v.muted, status: document.getElementById('mk-nfceScanStatus').getAttribute('role') }`);
+    eq(r, { dentro: true, rolagem: 0, inline: true, mudo: true, status: 'status' });
+    await ev(`document.getElementById('mk-nfceCancelBtn').click(); return 1`);
+  });
+
   /* ================================================================ 8c. Segunda revisão de código */
   group('Regressões: segunda revisão de código');
   // troca dados salvos e recarrega (o SEED não sobrescreve o que já existe)
@@ -836,7 +941,7 @@ async function launch(port) {
 
   await test('rev2: sugestões só oferecem o que dá para adicionar (comprados e já excluídos); escolher um comprado devolve o item à lista', async () => {
     await openPage(); await goto('compras');
-    const sug = q => ev(`const i=document.getElementById('sc-newItemInput'); i.focus(); i.value=${JSON.stringify(q)}; i.dispatchEvent(new Event('input',{bubbles:true})); await new Promise(r=>setTimeout(r,120)); return [...document.querySelectorAll('.sc-suggestion-item')].map(x=>x.textContent)`);
+    const sug = q => ev(`const i=document.getElementById('sc-newItemInput'); i.focus(); i.value=${JSON.stringify(q)}; i.dispatchEvent(new Event('input',{bubbles:true})); await new Promise(r=>setTimeout(r,120)); return [...document.querySelectorAll('.sc-suggestion-item .sc-suggestion-name')].map(x=>x.textContent)`);
     const item = name => ev(`return JSON.parse(localStorage.getItem('cf-shopping-v1')).items.find(x=>x.name===${JSON.stringify(name)}) || null`);
     eq(await sug('arr'), [], 'item pendente não é sugerido (seria recusado)');
     eq(await sug('caf'), ['Café']);
@@ -922,13 +1027,75 @@ async function launch(port) {
     eq(semNome, [], 'campos sem nome acessível');
   });
 
+  /* ================================================================ 8d. Terceira revisão de código */
+  group('Regressões: terceira revisão de código');
+  await test('rev3: NFC-e colada numa linha só: cada item fica com o próprio nome (sem o cabeçalho da loja)', async () => {
+    await openPage(); await goto('mercado');
+    const rows = await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150));
+      document.getElementById('mk-nfcePasteArea').value = 'SUPERMERCADO EXEMPLO LTDA CNPJ: 12.345.678/0001-99 ARROZ TIPO 1 5KG (Código: 7) Qtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90 FEIJAO CARIOCA 1KG (Código: 8) Qtde.:2 UN: UN Vl. Unit.: 7,80 Vl. Total 15,60 CAFE TORRADO 500G (Código: 9) Qtde.:1 UN: UN Vl. Unit.: 18,50 Vl. Total 18,50 Emissão: 12/09/2026';
+      document.getElementById('mk-nfceParseBtn').click(); await new Promise(r=>setTimeout(r,150));
+      const r=[...document.querySelectorAll('#mk-nfcePreviewTable tr')].slice(1).map(tr=>tr.children[0].textContent + '=' + tr.children[1].textContent); document.getElementById('mk-nfceCancelBtn').click(); return r`);
+    eq(rows, ['ARROZ TIPO 1 5KG=1', 'FEIJAO CARIOCA 1KG=2', 'CAFE TORRADO 500G=1']);
+  });
+  await test('rev3: categoria automática casa palavra, não pedaço de palavra (compras, despesas e mercado)', async () => {
+    await openPage({ seed: false }); await goto('compras');
+    const sc = await ev(`const i=document.getElementById('sc-newItemInput'); for (const n of ['Chocolate','Coca-Cola','Caramelo','Cerveja','Cola branca','Sabão em pó','Velas','Condicionador']) { i.value=n; document.getElementById('sc-addBtn').click(); await new Promise(r=>setTimeout(r,60)); }
+      const o={}; JSON.parse(localStorage.getItem('cf-shopping-v1')).items.forEach(x=>o[x.name]=x.category); return o`);
+    eq(sc, { 'Chocolate': 'Alimentos', 'Coca-Cola': 'Alimentos', 'Caramelo': 'Alimentos', 'Cerveja': 'Alimentos', 'Cola branca': 'Utensílios e Ferramentas', 'Sabão em pó': 'Limpeza', 'Velas': 'Utensílios e Ferramentas', 'Condicionador': 'Higiene' });
+    await goto('despesas');
+    const ex = await ev(`document.getElementById('ex-newToggle').click(); for (const n of ['Gasolina','Luz','Estimativa de obra','Gás de cozinha']) { document.getElementById('ex-newNameInput').value=n; document.getElementById('ex-newAmountInput').value='10'; document.getElementById('ex-addBtn').click(); await new Promise(r=>setTimeout(r,60)); }
+      const o={}; JSON.parse(localStorage.getItem('cf-expenses-v1')).items.forEach(x=>o[x.name]=x.category); return o`);
+    eq(ex, { 'Gasolina': 'Transporte', 'Luz': 'Contas e Utilidades', 'Estimativa de obra': 'Outros', 'Gás de cozinha': 'Contas e Utilidades' });
+    await goto('mercado');
+    const mk = await ev(`document.getElementById('mk-addBtn').click(); await new Promise(r=>setTimeout(r,150)); const row=document.querySelector('.mk-item-row'), d=row.querySelector('.mk-desc'); const o={};
+      for (const n of ['MOLHO BARBECUE','SARDINHA ENLATADA','ATADURA 10CM','SAB LUX 90G','APAR BARBEAR','SABAO EM PO 1KG','ARROZ']) { d.value=n; d.dispatchEvent(new Event('input',{bubbles:true})); o[n]=row.querySelector('.mk-cat').value; }
+      d.value=''; document.getElementById('mk-cancelBtn').click(); await new Promise(r=>setTimeout(r,200)); if (document.getElementById('app-dialog-overlay').classList.contains('open')) document.getElementById('app-dialog-ok').click(); return o`);
+    eq(mk, { 'MOLHO BARBECUE': 'Alimentação', 'SARDINHA ENLATADA': 'Alimentação', 'ATADURA 10CM': 'Medicamentos', 'SAB LUX 90G': 'Higiene', 'APAR BARBEAR': 'Higiene', 'SABAO EM PO 1KG': 'Limpeza', 'ARROZ': 'Alimentação' });
+  });
+  await test('rev3: dia de vencimento inválido avisa e mantém o formulário (novo e edição); observação limitada a 80 caracteres no campo', async () => {
+    await openPage(); await goto('despesas');
+    const r = await ev(`const g=id=>document.getElementById(id); g('ex-newToggle').click(); g('ex-newNameInput').value='Conta X'; g('ex-newAmountInput').value='100'; g('ex-newDayInput').value='45'; g('ex-addBtn').click(); await new Promise(r=>setTimeout(r,200));
+      const novo={ salvo: JSON.parse(localStorage.getItem('cf-expenses-v1')).items.some(x=>x.name==='Conta X'), nome: g('ex-newNameInput').value, aviso: g('ex-status').textContent };
+      const li=()=>document.querySelector('#ex-sections li[data-id="e2"]'); li().querySelector('.edit-btn').click(); await new Promise(r=>setTimeout(r,100)); const max=li().querySelector('.notes-field').maxLength;
+      li().querySelector('.day-field').value='0'; li().querySelector('.save-btn').click(); await new Promise(r=>setTimeout(r,200));
+      return { novo, max, editando: !!li().querySelector('.day-field'), aviso2: g('ex-status').textContent, dia: JSON.parse(localStorage.getItem('cf-expenses-v1')).items.find(x=>x.id==='e2').dueDay }`);
+    eq([r.novo.salvo, r.novo.nome, r.max, r.editando, r.dia], [false, 'Conta X', 80, true, 10]); ok(/1 a 31/.test(r.novo.aviso) && /1 a 31/.test(r.aviso2), r.novo.aviso + ' / ' + r.aviso2);
+  });
+  await test('rev3: foto do QR Code que termina de ser lida depois de o modal fechar não preenche nada nem chama o portal', async () => {
+    await openScan();
+    await ev(`const b=await (await fetch('tests/fixtures/qr-nfce.png')).blob(); const dt=new DataTransfer(); dt.items.add(new File([b],'f.png',{type:'image/png'})); const i=document.getElementById('mk-nfcePhotoInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
+      document.getElementById('mk-nfceCancelBtn').click(); await new Promise(r=>setTimeout(r,1500)); return 1`);
+    const s = await scanState(); eq([s.url, s.pedidos.length], ['', 0]);
+  });
+  await test('rev3: ler o QR Code não apaga o texto da nota que já estava colado', async () => {
+    await openScan();
+    await ev(`window.__ext.reply='<p>OUTRA COISA</p>'; document.getElementById('mk-nfcePasteArea').value='meu texto colado'; return 1`); await photo('tests/fixtures/qr-nfce.png');
+    const s = await scanState(); eq([s.colado, s.pedidos.length], ['meu texto colado', 0]); ok(s.url.includes(CHAVE) && /texto que já estava colado/.test(s.msg), s.msg);
+  });
+  await test('rev3: dá para esquecer um nome das sugestões da Lista de compras', async () => {
+    await withData({ 'cf-shopping-v1': { categories: ['Alimentos'], items: [], history: ['Detergente errrado', 'Detergente'] } }); await goto('compras');
+    const r = await ev(`const i=document.getElementById('sc-newItemInput'); const sug=async()=>{ i.focus(); i.value='deter'; i.dispatchEvent(new Event('input',{bubbles:true})); await new Promise(r=>setTimeout(r,120)); return [...document.querySelectorAll('.sc-suggestion-item .sc-suggestion-name')].map(x=>x.textContent) };
+      const antes=await sug(); const b=[...document.querySelectorAll('.sc-suggestion-item')].find(x=>/errrado/.test(x.textContent)).querySelector('.sc-suggestion-forget'); const nome=b.getAttribute('aria-label');
+      b.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true})); await new Promise(r=>setTimeout(r,200));
+      return { antes, nome, depois: await sug(), campo: i.value, salvo: JSON.parse(localStorage.getItem('cf-shopping-v1')).history }`);
+    eq(r.antes, ['Detergente errrado', 'Detergente']); ok(/Esquecer/.test(r.nome), r.nome); eq([r.depois, r.campo, r.salvo], [['Detergente'], 'deter', ['Detergente']]);
+  });
+  await test('rev3: a virada do dia não apaga o nome de categoria que está sendo editado', async () => {
+    await openPage(); await goto('despesas');
+    const v = await ev(`document.getElementById('ex-categoriesToggle').click(); await new Promise(r=>setTimeout(r,100)); document.querySelector('#ex-categoriesList .edit-btn').click(); await new Promise(r=>setTimeout(r,100));
+      document.querySelector('#ex-categoriesList .cat-name-input').value='Casa nova'; window.__setNow('2026-09-16T15:00:00Z'); document.dispatchEvent(new Event('visibilitychange')); await new Promise(r=>setTimeout(r,350));
+      const f=document.querySelector('#ex-categoriesList .cat-name-input'); return f ? f.value : null`);
+    eq(v, 'Casa nova');
+  });
+
   /* ================================================================ 9. PWA offline (por último: derruba o servidor) */
   group('PWA offline');
   await test('o service worker cacheia o app e ele abre e navega com o servidor DESLIGADO', async () => {
     await openPage();
     ok(await ev(`const reg = await Promise.race([navigator.serviceWorker.ready, new Promise(r=>setTimeout(()=>r(null),8000))]); return !!(reg && reg.active)`), 'o service worker não ficou ativo');
-    let cached = 0; for (let i = 0; i < 40 && cached < 7; i++) { cached = await ev(`const k=await caches.keys(); if(!k.length) return 0; const c=await caches.open(k[0]); return (await c.keys()).length`); await sleep(150); }
-    ok(cached >= 7, 'cache incompleto: ' + cached + ' arquivos (esperado ao menos 7: página, manifest e 4 ícones)');
+    let cached = 0; for (let i = 0; i < 40 && cached < 8; i++) { cached = await ev(`const k=await caches.keys(); if(!k.length) return 0; const c=await caches.open(k[0]); return (await c.keys()).length`); await sleep(150); }
+    ok(cached >= 8, 'cache incompleto: ' + cached + ' arquivos (esperado ao menos 8: página, manifest, 4 ícones e o leitor de QR Code)');
+    ok(await ev(`return !!(await caches.match('./vendor/jsQR.js'))`), 'o leitor de QR Code precisa estar no cache para funcionar offline');
     const cacheName = await ev(`return (await caches.keys())[0]`);
     ok(/^controle-financeiro-v[0-9]+$/.test(cacheName), 'nome do cache inesperado: ' + cacheName);
     server.closeAllConnections(); await new Promise(r => server.close(r));   // sem internet DE VERDADE

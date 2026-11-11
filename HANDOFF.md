@@ -155,6 +155,21 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
 - Acessibilidade: modais com `role="dialog"`/`aria-modal`, foco que entra ao abrir, Tab preso dentro e retorno do foco ao
   fechar; menu lateral fechado fora da ordem de Tab; Esc fecha o item do topo (diálogo > modais > menu > sino).
 
+## Leitura do QR Code da NFC-e (13/10/2026)
+
+No modal "Importar NFC-e": **Ler QR Code com a câmera** (`getUserMedia`, câmera traseira, vídeo `playsinline` mudo) e **Usar uma
+foto do cupom** (`<input type=file accept=image/*>`, sem `capture`, para o iPhone oferecer câmera ou galeria). Testes com prefixo `qr:`.
+
+- Decodificador: `vendor/jsQR.js` (jsQR 1.4.0, Apache-2.0, licença em `vendor/jsQR-LICENSE.txt`), arquivo separado de ~250 KB
+  carregado só no primeiro uso e mantido no cache pelo service worker (v4). Não foi embutido no `index.html` porque são 10 mil linhas.
+- O QR Code só traz o **link da consulta** (com a chave). Depois de ler, o app preenche o campo, analisa a chave e tenta buscar a
+  nota (`autoFetchNfce`) **só se o link for `gov.br`**; a Sefaz normalmente bloqueia (CORS) e o usuário segue por "Abrir nota no
+  portal" + colar o texto. Ou seja: o ganho é não digitar/colar o link; os itens continuam vindo do PDF ou do texto colado.
+- Vídeo: um quadro a cada ~160 ms, reduzido para 720 px, alternando um quadro normal e um suavizado (`boxBlurGray`, para ruído de
+  pouca luz). Foto: várias tentativas (tamanhos 1600/1000/600 e suavizações).
+- Imagens de teste em `tests/fixtures/qr-*.png` são QR Codes **fictícios** (chave inventada com dígito verificador válido).
+- Não testado em câmera real de iPhone: os testes usam câmera simulada (`canvas.captureStream`) e fotos sintéticas.
+
 ## Correções da segunda revisão (06/10/2026) — comportamento que NÃO deve regredir
 
 Todas têm teste com prefixo `rev2:` em `tests/e2e.js`.
@@ -190,9 +205,6 @@ Todas têm teste com prefixo `rev2:` em `tests/e2e.js`.
 
 Se o usuário pedir para continuar dessas ideias (já validadas com ele antes):
 
-- **Ler o QR Code da nota pela câmera** em vez de precisar do PDF/colar texto —
-  daria pra usar a biblioteca `jsQR` (~40KB, leve o suficiente pra embutir igual
-  o pdf.js), acessando a câmera via `getUserMedia`.
 - **Exportar/importar backup dos dados** — hoje só existe a importação de dados
   do Mercado (ver "Chaves de storage"). Falta um botão que baixe um `.json` com
   tudo (compras, despesas, mercado) e a restauração dos três módulos. Foi

@@ -51,6 +51,10 @@ antigo) e sem fonte externa (a Inter está embutida em base64). Detalhes em `HAN
 - **Avisos das telas** (`showStatus`) são `.toast` fixos no rodapé com `role="status"`; não volte a pôr a mensagem no fim da página.
 - **Todo campo precisa de nome acessível** (`<label for>` ou `aria-label`) e caixa de marcar usa `window.cfCheckbox`: há um teste
   que percorre todos os campos da página.
+- **QR Code da NFC-e** (`startScan`/`scanPhoto`): a câmera **tem de ser desligada** em todo caminho de saída (`stopScan`: Parar,
+  fechar o modal, Esc, app em segundo plano, permissão que chega depois do fechamento — `scanToken`). O texto lido é dado, não
+  comando: só entra no campo se tiver chave de 44 dígitos e só é buscado sozinho se o link for `gov.br`. O decodificador é
+  `vendor/jsQR.js` (carregado sob demanda, listado em `ASSETS` do service worker); não use `BarcodeDetector` (não existe no iPhone).
 - **Formulário de compra do Mercado:** fechar com algo digitado pede confirmação (`requestCloseModal`); só `closeModal()` direto depois de salvar.
 
 ## Rodar localmente
@@ -73,4 +77,5 @@ npx serve .
 
 - Sintaxe: extrair os `<script>` sem atributos (`/<script>([\s\S]*?)<\/script>/g`) e rodar `node --check` em cada um.
 - IDs duplicados: `grep -oE 'id="[a-zA-Z0-9_-]+"' index.html | sort | uniq -c | sort -rn`.
-- Ao alterar `index.html` ou os assets, incrementar `CACHE_NAME` em `service-worker.js` se a lista de `ASSETS` mudar.
+- Ao alterar `index.html` ou os assets, incrementar `CACHE_NAME` em `service-worker.js` se a lista de `ASSETS` mudar
+  (inclui `vendor/jsQR.js`: se o arquivo for atualizado, o cache precisa mudar de versão).

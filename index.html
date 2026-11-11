@@ -328,7 +328,9 @@
   .sc-input-wrap { position: relative; flex: 1; min-width: 0; }
   .sc-suggestions { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--panel); border-radius: var(--radius-md); overflow: hidden; z-index: 50; display: none; box-shadow: var(--shadow-md); max-height: 220px; overflow-y: auto; }
   .sc-suggestions.open { display: block; }
-  .sc-suggestion-item { padding: 11px 14px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .sc-suggestion-item { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 4px 0 14px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .sc-suggestion-name { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: 10px 0; }
+  .sc-suggestion-forget { flex: none; width: 40px; height: 40px; background: none; border: none; color: var(--color-neutral-500); font-size: 20px; line-height: 1; cursor: pointer; }
   .sc-suggestion-item:last-child { border-bottom: none; }
   .sc-suggestion-item:active { background: rgba(233, 233, 237, 0.07); }
   .sc-add-row .sc-qty-input { flex: 0 0 56px; width: 56px; padding-inline: 4px; text-align: center; }
@@ -539,6 +541,12 @@
   .file-btn { position: relative; cursor: pointer; }
   .file-btn input { position: absolute; width: 0; height: 0; opacity: 0; }
   .file-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }   /* .btn e afins definem display, o que anularia o atributo hidden */
+  /* Leitor de QR Code da NFC-e */
+  .nfce-scan-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .nfce-scan-btns > * { flex: 1 1 180px; }
+  .nfce-scanner { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .nfce-scanner video { display: block; width: 100%; max-height: 46vh; object-fit: cover; background: #000; border-radius: var(--radius-md); }
 
   .items-editor { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 14px; }
   #mk-itemRows { display: flex; flex-direction: column; gap: 10px; }
@@ -1013,8 +1021,20 @@
 <div class="overlay" id="mk-nfceOverlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mk-nfceTitle">
     <h2 id="mk-nfceTitle">Importar NFC-e</h2>
-    <p class="sub">Envie o PDF da nota, ou cole a URL do QR Code / a chave de 44 dígitos</p>
+    <p class="sub">Leia o QR Code do cupom, envie o PDF da nota ou cole a chave de 44 dígitos</p>
 
+    <div class="field" style="margin-bottom:14px;">
+      <label for="mk-nfcePhotoInput">QR Code do cupom</label>
+      <div class="nfce-scan-btns">
+        <button class="btn btn-secondary" id="mk-nfceScanBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"></path><line x1="4" y1="12" x2="20" y2="12"></line></svg>Ler QR Code com a câmera</button>
+        <label class="btn btn-secondary file-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="m4 18 5-5 4 4 3-3 4 4"></path></svg><span>Usar uma foto do cupom</span><input type="file" id="mk-nfcePhotoInput" accept="image/*"></label>
+      </div>
+      <div class="nfce-scanner" id="mk-nfceScanner" hidden>
+        <video id="mk-nfceVideo" playsinline muted autoplay></video>
+        <button class="btn btn-secondary" id="mk-nfceScanStop" type="button">Parar</button>
+      </div>
+      <div class="note" id="mk-nfceScanStatus" role="status" aria-live="polite" style="margin-top:4px;"></div>
+    </div>
     <div class="field" style="margin-bottom:14px;">
       <label for="mk-nfcePdfInput">PDF da nota fiscal</label>
       <label class="btn btn-secondary btn-block file-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5"></path><path d="M4 19h16"></path></svg><span id="mk-nfcePdfLabel">Escolher arquivo PDF</span><input type="file" id="mk-nfcePdfInput" accept="application/pdf,.pdf"></label>
@@ -1100,6 +1120,21 @@ async function storageSet(key, value) {
 }
 
 window.CF = { shopping: {}, expenses: {}, market: {}, wishlist: {} };
+
+// Palavra-chave de categoria: casa no INÍCIO de uma palavra ("vela" casa "velas", mas "veja" não casa "cerveja" nem
+// "cola" casa "chocolate"/"coca-cola"). Palavras de até 3 letras, ou escritas com espaço no fim ("SAB "), só casam inteiras
+// ("gas" não casa "gasolina"). Texto e palavra-chave devem estar na mesma caixa (maiúscula ou minúscula).
+const cfKeywordCache = {};
+window.cfHasKeyword = function (text, kw) {
+  let re = cfKeywordCache[kw];
+  if (!re) {
+    const word = kw.trim(), L = 'A-Za-zÀ-ÿ0-9';
+    const whole = word.length <= 3 || kw !== word;
+    re = cfKeywordCache[kw] = new RegExp('(^|[^' + L + '-])' + word.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&') + (whole ? '(?![' + L + '-])' : ''));
+  }
+  return re.test(text);
+};
+
 
 // Diálogo próprio de confirmar/alertar. Existe porque o confirm()/alert() nativo
 // do navegador pode ser bloqueado silenciosamente em alguns ambientes de preview
@@ -1201,7 +1236,7 @@ const CATEGORY_KEYWORDS = {
 function classifyItem(name) {
   const n = name.toLowerCase();
   for (const cat of ["Limpeza", "Higiene", "Utensílios e Ferramentas"]) {
-    if (categories.includes(cat) && CATEGORY_KEYWORDS[cat].some(kw => n.includes(kw))) return cat;
+    if (categories.includes(cat) && CATEGORY_KEYWORDS[cat].some(kw => window.cfHasKeyword(n, kw))) return cat;
   }
   return categories.includes("Alimentos") ? "Alimentos" : categories[0];
 }
@@ -1748,7 +1783,20 @@ function showSuggestions(query) {
   matches.forEach(name => {
     const opt = document.createElement('div');
     opt.className = 'sc-suggestion-item';
-    opt.textContent = name;
+    const label = document.createElement('span'); label.className = 'sc-suggestion-name'; label.textContent = name;
+    opt.appendChild(label);
+    if (!items.some(it => it.name.toLowerCase() === name.toLowerCase())) {   // só nomes do histórico (item que não está mais na lista)
+      const forget = document.createElement('button');
+      forget.type = 'button'; forget.className = 'sc-suggestion-forget'; forget.textContent = '×';
+      forget.setAttribute('aria-label', 'Esquecer "' + name + '" das sugestões');
+      forget.addEventListener('mousedown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        nameHistory = nameHistory.filter(h => h.toLowerCase() !== name.toLowerCase());
+        saveState();
+        showSuggestions(scNewItemInput.value);
+      });
+      opt.appendChild(forget);
+    }
     // mousedown (não click) pra disparar antes do input perder o foco
     opt.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -1809,7 +1857,7 @@ const CATEGORY_KEYWORDS = {
 function classifyItem(name) {
   const n = name.toLowerCase();
   for (const cat of ["Moradia", "Contas e Utilidades", "Assinaturas", "Transporte", "Saúde", "Educação"]) {
-    if (categories.includes(cat) && CATEGORY_KEYWORDS[cat].some(kw => n.includes(kw))) return cat;
+    if (categories.includes(cat) && CATEGORY_KEYWORDS[cat].some(kw => window.cfHasKeyword(n, kw))) return cat;
   }
   return categories.includes("Outros") ? "Outros" : categories[categories.length - 1];
 }
@@ -1962,7 +2010,7 @@ function render() {
 
         const notesInput = document.createElement('input');
         notesInput.type = 'text'; notesInput.className = 'edit-input notes-field';
-        notesInput.placeholder = 'Observação (opcional)'; notesInput.value = item.notes || '';
+        notesInput.placeholder = 'Observação (opcional)'; notesInput.value = item.notes || ''; notesInput.maxLength = 80;
         fields.appendChild(notesInput);
 
         li.appendChild(fields);
@@ -2204,6 +2252,15 @@ async function toggleItem(id) {
   await saveState();
 }
 
+// Dia do vencimento: vazio = sem dia (null); 1 a 31 = o dia; qualquer outra coisa é inválida (false) e deve ser avisada.
+const DAY_MSG = 'O dia do vencimento deve ser de 1 a 31 (ou fique em branco)';
+function parseDueDay(raw) {
+  const t = String(raw == null ? '' : raw).trim();
+  if (t === '') return null;
+  if (!/^[0-9]{1,2}$/.test(t)) return false;
+  const d = parseInt(t, 10);
+  return d >= 1 && d <= 31 ? d : false;
+}
 function addItem(rawName, rawAmount, rawDay, chosenCategory) {
   const name = rawName.trim();
   if (!name) { showStatus('Informe o nome da conta'); return false; }
@@ -2211,8 +2268,8 @@ function addItem(rawName, rawAmount, rawDay, chosenCategory) {
   if (amount <= 0) { showStatus('Informe um valor válido, maior que zero'); return false; }
   const exists = items.some(i => i.name.toLowerCase() === name.toLowerCase());
   if (exists) { showStatus('"' + name + '" já está na lista'); return false; }
-  const day = parseInt(rawDay, 10);
-  const dueDay = (day >= 1 && day <= 31) ? day : null;
+  const dueDay = parseDueDay(rawDay);
+  if (dueDay === false) { showStatus(DAY_MSG); return false; }
   const category = (chosenCategory && categories.includes(chosenCategory)) ? chosenCategory : classifyItem(name);
   items.push({ id: makeId(), name, amount, dueDay, notes: '', category, paid: false, order: nextOrder() });
   render();
@@ -2230,6 +2287,8 @@ async function saveEdit(id, rawName, rawAmount, rawDay, rawNotes) {
   }
   const newAmount = parseAmount(rawAmount);
   if (newAmount <= 0) { showStatus('Informe um valor válido, maior que zero'); return; }
+  const newDay = parseDueDay(rawDay);
+  if (newDay === false) { showStatus(DAY_MSG); return; }
   // Tudo validado: só agora altera (antes o nome mudava mesmo quando o valor era recusado).
   if (name) {
     // Só reclassifica quando o nome mudou E a conta ainda estava na categoria automática (ver Lista de compras).
@@ -2239,8 +2298,7 @@ async function saveEdit(id, rawName, rawAmount, rawDay, rawNotes) {
     if (renamed && wasAuto) it.category = classifyItem(name);
   }
   it.amount = newAmount;
-  const day = parseInt(rawDay, 10);
-  it.dueDay = (day >= 1 && day <= 31) ? day : null;
+  it.dueDay = newDay;
   it.notes = (rawNotes || '').trim().slice(0, 80);
   editingId = null;
   render();
@@ -2461,7 +2519,7 @@ window.CF.expenses.overdue = function () {
   return { count: late.length, total: late.reduce((s, i) => s + (i.amount || 0), 0) };
 };
 // Redesenha quando o dia muda com o app aberto (ver refreshIfDayChanged); não apaga uma edição em andamento
-window.CF.expenses.refresh = function () { if (editingId === null && !dragState) render(); else updateSummary(); };
+window.CF.expenses.refresh = function () { if (editingId === null && editingCategory === null && !dragState) render(); else updateSummary(); };
 // Contas que vencem hoje ou nos próximos 3 dias (usado pelo sino de notificações)
 window.CF.expenses.dueSoon = function () {
   const soon = items.filter(i => dueSoonDays(i) !== null);
@@ -2505,13 +2563,13 @@ const CAT_COLOR = {'Alimentação':'--s1','Limpeza':'--s2','Medicamentos':'--s3'
 const KEYWORDS = {
   'Medicamentos': ["ATAD","COMPRESSA","CEFALEXINA","IBUPROFENO","ESPARAD","SORO FISIOL","AGUA OXIG","DIPIRONA","PARACETAMOL","XAROPE","LORATADINA","NAPROXENO","DICLOF","DIMETICONA","INTRAV","GRAVIDEZ","SERINGA","LUVA CIRURG","MERTHIOLATE"],
   'Limpeza': ["LAVA ROU","SACO LIXO","EVITA MOFO","INSET","BAYGON","DETERGENTE","DESINFETANTE","AMACIANTE","AMAC ","SABAO EM PO","AGUA SANIT","PEDRA SANIT","LIMP "],
-  'Higiene': ["ABS ","ALGODAO","ALGODÃO","DES AER","DES ROL","ESC DENTAL","FRAL","HASTES","LENCO UMED","PAPEL HIG","TAPETE HIG","SAB ","XAMPU","MASC ","ESM ","BARB","CR D ","TRESEMME","FACIAL","ABSORV"],
+  'Higiene': ["ABS ","ALGODAO","ALGODÃO","DES AER","DES ROL","ESC DENTAL","FRAL","HASTES","LENCO UMED","PAPEL HIG","TAPETE HIG","SAB ","XAMPU","MASC ","ESM ","BARBEA","BARB ","CR D ","TRESEMME","FACIAL","ABSORV"],
   'Itens Domésticos': ["PILHA","LAMPADA","VELA ","FOSFORO","GUARDANAPO","PAPEL ALUM","PAPEL FILME","VASSOURA","RODO ","PANELA","BRINQUEDO","DIE CAST","MELAMINA"],
 };
 function classify(desc){
   const d = (desc||'').toUpperCase();
   for (const k of ['Medicamentos','Limpeza','Higiene','Itens Domésticos']){
-    for (const kw of KEYWORDS[k]) if (d.includes(kw)) return k;
+    for (const kw of KEYWORDS[k]) if (window.cfHasKeyword(d, kw)) return k;
   }
   return 'Alimentação';
 }
@@ -3551,19 +3609,26 @@ function normalizeUnit(raw){
   if (/^UN/.test(u)) return 'UN';
   return u.slice(0,2);
 }
+// O nome do item é o que vem ANTES de "Qtde": o trecho entre o fim do item anterior e o começo deste. Funciona tanto com
+// uma linha por informação (PDF) quanto com tudo numa linha só (página copiada sem quebras / busca automática).
+function nfceDescFromSegment(seg){
+  const lines = seg.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  for (let j=lines.length-1; j>=0 && j>=lines.length-3; j--){
+    let c = lines[j];
+    const cnpj = c.match(/^.*\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/);   // cabeçalho da loja grudado antes do 1º item
+    if (cnpj) c = c.slice(cnpj[0].length);
+    c = c.replace(/\(C[oó]digo:.*?\)/i,'').trim().replace(/^\d+\s*-\s*/,'').trim();
+    if (c.length>1) return c;
+  }
+  return '';
+}
 function parseItemsFromNFCeText(text){
   const itemRe = /Qtde\.?:?\s*([\d.,]+)\s*(?:UN:?\s*)?([A-Za-zÀ-ÿ%°.]{1,6})?\s*Vl\.?\s*Unit\.?:?\s*([\d.,]+)\s*Vl\.?\s*Total\s*[:.]?\s*([\d.,]+)/gi;
-  const lines = text.split(/\r?\n|(?=Qtde)/i).map(l=>l.trim()).filter(Boolean);
   const items = [];
-  for (let i=0;i<lines.length;i++){
-    itemRe.lastIndex = 0;
-    const m = itemRe.exec(lines[i]);
-    if (!m) continue;
-    let desc = '';
-    for (let j=i-1;j>=0 && j>=i-3;j--){
-      const candidate = lines[j].replace(/^\d+\s*-?\s*/,'').replace(/\(C[oó]digo:.*?\)/i,'').trim();
-      if (candidate && !/Qtde/i.test(candidate) && candidate.length>1){ desc = candidate; break; }
-    }
+  let lastEnd = 0, m;
+  while ((m = itemRe.exec(text)) !== null){
+    const desc = nfceDescFromSegment(text.slice(lastEnd, m.index));
+    lastEnd = itemRe.lastIndex;
     items.push({
       descricao: desc || ('Item ' + (items.length+1)),
       qtde: parseBRNum(m[1]) || 1,
@@ -3628,9 +3693,10 @@ function openNfceModal(){
   document.getElementById('mk-nfcePreview').style.display = 'none';
   document.getElementById('mk-nfceUseBtn').style.display = 'none';
   nfceStatus('');
+  stopScan(); scanStatus(''); nfcePhotoInput.value = '';
   nfceOverlay.classList.add('open');
 }
-function closeNfceModal(){ nfceOverlay.classList.remove('open'); }
+function closeNfceModal(){ stopScan(); nfceOverlay.classList.remove('open'); }
 
 document.getElementById('mk-nfceBtn').addEventListener('click', openNfceModal);
 document.getElementById('mk-nfceCancelBtn').addEventListener('click', closeNfceModal);
@@ -3696,12 +3762,8 @@ document.getElementById('mk-nfceOpenPortalBtn').addEventListener('click', async 
   window.open(url, '_blank', 'noopener');
 });
 
-document.getElementById('mk-nfceAutoFetchBtn').addEventListener('click', async ()=>{
-  const url = nfceInput.value.trim();
-  if (!/^https?:\/\//i.test(url)){
-    await appAlert('Cole a URL completa do QR Code para tentar a busca automática.');
-    return;
-  }
+// Tenta baixar a página da nota. Devolve true se conseguiu (o normal é a Sefaz bloquear o pedido).
+async function autoFetchNfce(url){
   nfceStatus('Tentando buscar (pode falhar por bloqueio do navegador)...');
   try {
     const resp = await fetch(url);
@@ -3710,10 +3772,193 @@ document.getElementById('mk-nfceAutoFetchBtn').addEventListener('click', async (
     const plain = stripHtmlTags(html);
     nfcePasteArea.value = plain;
     nfceStatus('Consegui buscar! Confira o texto abaixo e clique em "Processar texto colado".');
+    return true;
   } catch(e){
     nfceStatus('Não foi possível buscar automaticamente (bloqueio de segurança do site da Sefaz). Abra o link e cole o texto manualmente.');
+    return false;
   }
+}
+document.getElementById('mk-nfceAutoFetchBtn').addEventListener('click', async ()=>{
+  const url = nfceInput.value.trim();
+  if (!/^https?:\/\//i.test(url)){
+    await appAlert('Cole a URL completa do QR Code para tentar a busca automática.');
+    return;
+  }
+  await autoFetchNfce(url);
 });
+
+/* ---------- ler o QR Code do cupom: câmera ao vivo ou foto ----------
+   O QR Code da NFC-e traz o link da consulta (com a chave de 44 dígitos). A câmera só entrega esse link: o conteúdo da
+   nota continua dependendo do portal da Sefaz, que normalmente bloqueia a leitura pelo navegador.
+   O decodificador (jsQR, vendor/jsQR.js, Apache-2.0) é carregado só no primeiro uso; o service worker o mantém no cache.
+   Não usamos BarcodeDetector porque o Safari do iPhone não o oferece. */
+const nfceScanBtn = document.getElementById('mk-nfceScanBtn');
+const nfceScannerEl = document.getElementById('mk-nfceScanner');
+const nfceVideo = document.getElementById('mk-nfceVideo');
+const nfcePhotoInput = document.getElementById('mk-nfcePhotoInput');
+const PHOTO_HINT = 'use "Usar uma foto do cupom"';
+let scanStream = null, scanTimer = null, scanToken = 0, qrLibPromise = null;
+const scanCanvas = document.createElement('canvas');
+
+function scanStatus(msg){ document.getElementById('mk-nfceScanStatus').textContent = msg || ''; }
+function loadQrLib(){
+  if (window.jsQR) return Promise.resolve(window.jsQR);
+  if (!qrLibPromise) qrLibPromise = new Promise((resolve, reject)=>{
+    const s = document.createElement('script'); s.src = './vendor/jsQR.js';
+    s.onload = ()=>{ if (window.jsQR) resolve(window.jsQR); else reject(new Error('jsQR ausente')); };
+    s.onerror = ()=>{ qrLibPromise = null; s.remove(); reject(new Error('falha ao carregar')); };   // permite tentar de novo
+    document.head.appendChild(s);
+  });
+  return qrLibPromise;
+}
+// Desenha a imagem (vídeo ou foto) reduzida num canvas e procura um QR Code. Devolve o texto ou null.
+// smooth > 0 suaviza a imagem antes (média de (2·smooth+1)² pixels): foto com pouca luz tem ruído que esconde o código.
+function decodeQr(source, w, h, maxSide, jsQR, inversion, smooth){
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  const cw = Math.max(1, Math.round(w*scale)), ch = Math.max(1, Math.round(h*scale));
+  scanCanvas.width = cw; scanCanvas.height = ch;
+  const cx = scanCanvas.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(source, 0, 0, cw, ch);
+  const image = cx.getImageData(0, 0, cw, ch);
+  const found = jsQR(smooth ? boxBlurGray(image.data, cw, ch, smooth) : image.data, cw, ch, { inversionAttempts: inversion });
+  return found && found.data ? found.data : null;
+}
+// Média móvel em tons de cinza (duas passadas, horizontal e vertical). Feita à mão porque o filtro de desfoque do canvas
+// (ctx.filter) não existe no Safari de iPhones mais antigos.
+function boxBlurGray(data, W, H, r){
+  const n = 2*r + 1, tmp = new Float32Array(W*H), out = new Uint8ClampedArray(data.length);
+  const gray = i => (data[i]*77 + data[i+1]*150 + data[i+2]*29) >> 8;
+  for (let y=0; y<H; y++){
+    let acc = 0;
+    for (let x=-r; x<=r; x++) acc += gray((y*W + Math.min(W-1, Math.max(0, x)))*4);
+    for (let x=0; x<W; x++){
+      tmp[y*W + x] = acc/n;
+      acc += gray((y*W + Math.min(W-1, x+r+1))*4) - gray((y*W + Math.max(0, x-r))*4);
+    }
+  }
+  for (let x=0; x<W; x++){
+    let acc = 0;
+    for (let y=-r; y<=r; y++) acc += tmp[Math.min(H-1, Math.max(0, y))*W + x];
+    for (let y=0; y<H; y++){
+      const v = acc/n, i = (y*W + x)*4;
+      out[i] = out[i+1] = out[i+2] = v; out[i+3] = 255;
+      acc += tmp[Math.min(H-1, y+r+1)*W + x] - tmp[Math.max(0, y-r)*W + x];
+    }
+  }
+  return out;
+}
+function stopScan(){
+  scanToken++;   // invalida um startScan que ainda esteja esperando a câmera
+  clearTimeout(scanTimer); scanTimer = null;
+  if (scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream = null; }
+  nfceVideo.srcObject = null;
+  nfceScannerEl.hidden = true;
+}
+function cameraErrorMsg(e){
+  const n = e && e.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError') return 'A câmera foi bloqueada. Libere a permissão de câmera para este app nos ajustes do aparelho, ou ' + PHOTO_HINT + '.';
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Não encontrei uma câmera neste aparelho: ' + PHOTO_HINT + '.';
+  if (n === 'NotReadableError' || n === 'AbortError') return 'A câmera está em uso por outro app. Feche-o e tente de novo, ou ' + PHOTO_HINT + '.';
+  return 'Não consegui abrir a câmera: ' + PHOTO_HINT + '.';
+}
+async function startScan(){
+  if (scanStream) return;
+  stopScan();
+  const my = scanToken;
+  scanStatus('Abrindo a câmera…');
+  let jsQR, stream;
+  try { jsQR = await loadQrLib(); }
+  catch(e){ if (my === scanToken) scanStatus('Não consegui carregar o leitor de QR Code. Confira a conexão e tente de novo.'); return; }
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); }
+  catch(e){ if (my === scanToken) scanStatus(cameraErrorMsg(e)); return; }
+  // o modal foi fechado (ou outra leitura começou) enquanto o aparelho pedia a permissão: não deixa a câmera ligada
+  if (my !== scanToken || !nfceOverlay.classList.contains('open')){ stream.getTracks().forEach(t=>t.stop()); return; }
+  scanStream = stream;
+  nfceVideo.srcObject = stream;
+  nfceScannerEl.hidden = false;
+  try { await nfceVideo.play(); } catch(e){ /* o autoplay mudo cobre; se falhar, o quadro seguinte tenta de novo */ }
+  if (scanStream !== stream) return;
+  scanStatus('Aponte a câmera para o QR Code do cupom.');
+  let frame = 0;
+  const tick = ()=>{
+    if (scanStream !== stream) return;
+    let text = null;
+    if (nfceVideo.videoWidth > 0){
+      // um quadro normal, um suavizado: com pouca luz o vídeo tem ruído e só o suavizado é lido
+      try { text = decodeQr(nfceVideo, nfceVideo.videoWidth, nfceVideo.videoHeight, 720, jsQR, 'dontInvert', (frame++ % 2) ? 2 : 0); } catch(e){ text = null; }
+    }
+    if (text){ stopScan(); handleQrText(text); return; }
+    scanTimer = setTimeout(tick, 160);
+  };
+  tick();
+}
+// O que foi lido do QR Code é tratado como TEXTO: só entra no campo se tiver uma chave de NFC-e, e a busca automática
+// só acontece para portais gov.br (um QR Code qualquer não pode fazer o app sair pedindo páginas por aí).
+async function handleQrText(raw){
+  const text = String(raw).trim().slice(0, 2000);
+  if (!extractChave44(text)){
+    scanStatus('Esse QR Code não parece ser de uma NFC-e (li: "' + text.slice(0, 40) + (text.length > 40 ? '…' : '') + '").');
+    return;
+  }
+  nfceInput.value = text;
+  analisarChave(text);
+  nfceStatus('');
+  let url = null;
+  try { if (/^https?:\/\/\S+$/i.test(text)) url = new URL(text); } catch(e){ url = null; }
+  if (!url){ scanStatus('Chave da nota lida. Cole abaixo o texto dos itens (ou envie o PDF) para continuar.'); return; }
+  const host = url.hostname.toLowerCase();
+  if (host !== 'gov.br' && !host.endsWith('.gov.br')){
+    scanStatus('QR Code lido, mas o link não é de um portal gov.br (' + host + '). Confira antes de abrir.');
+    return;
+  }
+  if (nfcePasteArea.value.trim()){ scanStatus('QR Code lido. Mantive o texto que já estava colado abaixo; apague-o se quiser buscar a nota de novo.'); return; }
+  scanStatus('QR Code lido. Buscando a nota…');
+  const got = await autoFetchNfce(text);
+  scanStatus(got ? 'QR Code lido e nota encontrada.' : 'QR Code lido. O portal não deixou buscar a nota: toque em "Abrir nota no portal da Sefaz", copie o texto dos itens e cole abaixo.');
+}
+async function scanPhoto(file){
+  stopScan();
+  const my = scanToken;   // fechar o modal (ou começar outra leitura) muda o token: o resultado desta foto é descartado
+  const stale = () => my !== scanToken || !nfceOverlay.classList.contains('open');
+  scanStatus('Lendo a foto…');
+  let jsQR;
+  try { jsQR = await loadQrLib(); }
+  catch(e){ if (!stale()) scanStatus('Não consegui carregar o leitor de QR Code. Confira a conexão e tente de novo.'); return; }
+  let source = null, url = null;
+  try {
+    if (window.createImageBitmap){
+      try { source = await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch(e){ source = null; }
+    }
+    if (!source){
+      url = URL.createObjectURL(file);
+      source = await new Promise((resolve, reject)=>{ const img = new Image(); img.onload = ()=>resolve(img); img.onerror = reject; img.src = url; });
+    }
+    if (stale()) return;
+    const w = source.width || source.naturalWidth, h = source.height || source.naturalHeight;
+    let text = null;
+    // Várias tentativas, da mais provável para a menos: tamanho cheio; suavizada (ruído de pouca luz, que é a falha mais
+    // comum e a mais lenta de descartar); tamanhos menores (foto enorme ou QR minúsculo); outras suavizações.
+    const tries = [[1600, 'attemptBoth', 0], [1280, 'dontInvert', 2], [1000, 'attemptBoth', 0], [600, 'attemptBoth', 0], [1280, 'dontInvert', 1], [1280, 'dontInvert', 3]];
+    for (const t of tries){ text = decodeQr(source, w, h, t[0], jsQR, t[1], t[2]); if (text) break; }
+    if (!text){ scanStatus('Não encontrei um QR Code nessa foto. Aproxime o cupom, com boa luz e sem cortar o código, e tente de novo.'); return; }
+    await handleQrText(text);
+  } catch(e){
+    if (!stale()) scanStatus('Não consegui abrir essa imagem. Tente outra foto.');
+  } finally {
+    if (url) URL.revokeObjectURL(url);
+    if (source && source.close) source.close();
+  }
+}
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) nfceScanBtn.addEventListener('click', startScan);
+else nfceScanBtn.hidden = true;   // sem acesso à câmera ao vivo (navegador antigo ou página sem https): fica só a foto
+document.getElementById('mk-nfceScanStop').addEventListener('click', ()=>{ stopScan(); scanStatus(''); });
+nfcePhotoInput.addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';   // permite escolher a mesma foto de novo
+  if (file) scanPhoto(file);
+});
+// Saiu do app com a câmera ligada: desliga (bateria e privacidade)
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'hidden' && scanStream){ stopScan(); scanStatus('Leitura interrompida. Toque em "Ler QR Code com a câmera" para continuar.'); } });
 
 document.getElementById('mk-nfceParseBtn').addEventListener('click', ()=>{
   const text = nfcePasteArea.value;
