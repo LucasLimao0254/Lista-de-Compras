@@ -8,9 +8,11 @@ está implementado e o fluxo de validação.
 
 ## Cuidado ao inspecionar `index.html`
 
-O arquivo tem ~1.7MB porque o `pdf.js` e seu worker estão embutidos, **cada um em uma única
-linha gigante**. Nunca rode `grep -n` / `Read` sem restringir: use `grep -oE` (só o trecho casado)
-ou filtre linhas por tamanho. Os módulos próprios estão nos `<script>` sem atributos.
+O arquivo tem ~340 KB. A fonte Inter está embutida em base64 numa **única linha de ~64 KB** dentro do
+`<style>`: nunca rode `grep -n` / `Read` sem restringir (use `grep -oE` ou filtre linhas por tamanho).
+Os módulos próprios estão nos `<script>` sem atributos. As bibliotecas de terceiros ficam em `vendor/`
+(`pdf.min.js`, `pdf.worker.min.js`, `jsQR.js`), carregadas sob demanda; não as embuta de volta no HTML
+(1,5 MB analisados em toda abertura).
 
 ## Estilo (sistema Nocturne)
 
@@ -55,6 +57,19 @@ antigo) e sem fonte externa (a Inter está embutida em base64). Detalhes em `HAN
   fechar o modal, Esc, app em segundo plano, permissão que chega depois do fechamento — `scanToken`). O texto lido é dado, não
   comando: só entra no campo se tiver chave de 44 dígitos e só é buscado sozinho se o link for `gov.br`. O decodificador é
   `vendor/jsQR.js` (carregado sob demanda, listado em `ASSETS` do service worker); não use `BarcodeDetector` (não existe no iPhone).
+- **Backup** (menu → Seus dados): `BK_KEYS` lista as chaves exportadas/restauradas. **Chave de storage nova tem de entrar ali**, senão
+  fica fora do backup. Restaurar substitui tudo e recarrega; por isso os carregadores de cada módulo descartam item inválido em vez de
+  confiar no arquivo.
+- **Marcar item/conta não chama `render()`:** `toggleItem` troca só o `<li>` (`buildLi`) e atualiza totais. Se criar algo na tela que
+  dependa de marcado/pago, atualize-o em `updateProgress`/`updateSummary`, não só no `render()`.
+- **Excluir item/conta usa `window.cfUndo`** (some na hora, aviso "Desfazer" por 7 s), não `appConfirm`. Confirmação fica para o que
+  não tem volta simples (categoria, ida ao mercado, item de desejos, restaurar backup).
+- **Navegação:** barra inferior (`#bottomNav`, `data-nav`) no celular, menu fixo a partir de 960 px; o menu lateral continua existindo
+  (Comparador e backup só estão nele). `goToView` atualiza os três. Avisos (`.toast`, `.undo-toast`) ficam acima da barra.
+- **Alvos de toque:** todo controle tem pelo menos 40 px (teste `fl: todo controle tocável`). Ao criar botão/link novo, confira.
+- **Código compartilhado das listas:** arrastar (`cfDragList`) e painel de categorias (`cfRenderCategoriesPanel`) ficam no primeiro
+  `<script>`; Compras e Despesas só passam os dados. Não volte a copiar esse código para dentro de um módulo.
+- **Categoria automática:** use `window.cfHasKeyword` (início de palavra; até 3 letras, palavra inteira), nunca `includes`.
 - **Formulário de compra do Mercado:** fechar com algo digitado pede confirmação (`requestCloseModal`); só `closeModal()` direto depois de salvar.
 
 ## Rodar localmente
@@ -74,8 +89,9 @@ npx serve .
   Ao achar um bug, escreva o teste que falha primeiro e só então corrija.
   `TEST_INDEX=outro.html npm test` roda contra uma cópia (útil para conferir que o teste pega um defeito).
   `TEST_FILTER="^rev2:" node tests/e2e.js` roda só os testes cujo nome casar com a expressão regular.
+  Prefixos dos grupos mais novos: `qr:` (QR Code), `rev3:`, `bk:` (backup), `fl:` (fluidez), `ut:` (utilidade), `es:` (estrutura/computador).
 
 - Sintaxe: extrair os `<script>` sem atributos (`/<script>([\s\S]*?)<\/script>/g`) e rodar `node --check` em cada um.
 - IDs duplicados: `grep -oE 'id="[a-zA-Z0-9_-]+"' index.html | sort | uniq -c | sort -rn`.
 - Ao alterar `index.html` ou os assets, incrementar `CACHE_NAME` em `service-worker.js` se a lista de `ASSETS` mudar
-  (inclui `vendor/jsQR.js`: se o arquivo for atualizado, o cache precisa mudar de versão).
+  (inclui os arquivos de `vendor/`: se algum for atualizado, o cache precisa mudar de versão).

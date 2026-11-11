@@ -73,21 +73,21 @@ Um único arquivo `index.html` com:
   faz `Promise.all([...init() dos 4 módulos...])` e só depois renderiza a Visão Geral.
   Qualquer módulo que altere dados relevantes para o sino chama
   `window.CF.refreshAlerts()` (definida nesse script) para atualizá-lo na hora.
-- Dois `<script>` com bibliotecas de terceiros **embutidas por completo como
-  texto** (não carregadas de CDN): `pdf.js` e seu worker, usados pra ler PDF de
-  NFC-e 100% offline. Ver aviso importante sobre isso mais abaixo.
+- Bibliotecas de terceiros em `vendor/` (mesmo repositório, nada de CDN), carregadas só quando usadas e mantidas no
+  cache pelo service worker: `pdf.min.js` + `pdf.worker.min.js` (ler PDF de NFC-e) e `jsQR.js` (QR Code).
+- O primeiro `<script>` próprio guarda o que é compartilhado: storage, diálogos em fila, `cfUndo`, `cfCheckbox`,
+  `cfHasKeyword`, `cfDragList` e `cfRenderCategoriesPanel`.
 
 ## ⚠️ Aviso operacional importante (evita um problema real que já aconteceu)
 
-As bibliotecas `pdf.js` embutidas ficam em **uma única linha gigante cada**
-(centenas de KB de JS minificado numa linha só). Rodar `grep -n` sem restringir
-tamanho de linha nesse arquivo despeja megabytes de texto no contexto sem
-querer. **Sempre** que for inspecionar ou editar o arquivo:
+A fonte Inter embutida em base64 ocupa **uma única linha de ~64 KB** no `<style>` (o pdf.js, que antes eram duas
+linhas de mais de 1 MB, hoje está em `vendor/`). Rodar `grep -n` sem restringir tamanho de linha ainda despeja
+texto demais no contexto. **Sempre** que for inspecionar ou editar o arquivo:
 
 - Pra buscar algo, use `grep -oE` (só o trecho casado) ou filtre por tamanho de
   linha em Python antes de imprimir (`if len(line) < 300: print(...)`).
 - Pra validar sintaxe JS, extraia só os blocos `<script>` **sem atributos**
-  (os módulos próprios; os embutidos têm `id="pdfjsLibSource"` etc.) via
+  (os módulos próprios) via
   `re.findall(r'<script>(.*?)</script>', html, re.DOTALL)` e rode
   `node --check` em cada um.
 - Pra checar IDs duplicados: `grep -oE 'id="[a-zA-Z0-9_-]+"' arquivo | sort | uniq -c | sort -rn`.
@@ -155,13 +155,36 @@ querer. **Sempre** que for inspecionar ou editar o arquivo:
 - Acessibilidade: modais com `role="dialog"`/`aria-modal`, foco que entra ao abrir, Tab preso dentro e retorno do foco ao
   fechar; menu lateral fechado fora da ordem de Tab; Esc fecha o item do topo (diálogo > modais > menu > sino).
 
+## Revisão geral (11/11/2026): backup, fluidez, utilidade e estrutura
+
+Feita a pedido do usuário ("app fluido, útil, dinâmico e sem erros"), em cinco etapas, cada uma com testes próprios.
+
+- **Backup** (`bk:`): menu → "Seus dados" → *Fazer backup* (arquivo `controle-financeiro-backup-AAAA-MM-DD.json` com
+  `{ app, version, exportedAt, data: { <chave>: <conteúdo> } }`) e *Restaurar backup* (substitui tudo, com confirmação;
+  módulo ausente no arquivo fica vazio). No app instalado no iPhone o arquivo sai pela folha de compartilhamento.
+  `cf-meta-v1` = `{ firstSeen, lastBackup }`: o sino lembra do backup após 7 dias sem nenhum ou 30 dias do último.
+  O app chama `navigator.storage.persist()`. Os carregadores descartam itens inválidos.
+- **Fluidez** (`fl:`): barra inferior com 5 destinos; alvos de toque ≥ 40 px; pdf.js sob demanda; marcar item/conta troca
+  só a linha; histórico do Mercado em páginas de 30 idas, com a tabela de cada ida montada ao abrir quando há mais de 12;
+  excluir item/conta com "Desfazer"; trocar para a Lista de compras só redesenha se o histórico do Mercado mudou
+  (`CF.market.version()`). Medido com CPU 4× mais lenta e 4.500 itens de mercado: abrir 3,1 s → 1,0 s; digitar na busca
+  2,2 s → 0,25 s; marcar item 0,33 s → 0,06 s. Ainda acima de 100 ms nesse cenário: busca do Mercado e abrir a Lista de
+  compras com 300 itens (~0,5 s).
+- **Utilidade** (`ut:`): Visão geral com "Próximas contas" (`CF.expenses.upcoming`/`pay`); botão "Registrar compra no
+  Mercado" na Lista de compras (`CF.market.openPurchase`), que leva os itens marcados com quantidade e preço estimado;
+  no Mercado o histórico vem antes dos gráficos, a legenda só mostra categorias com gasto e o eixo usa passos redondos.
+- **Estrutura** (`es:`): arrastar e painel de categorias compartilhados; a partir de 960 px o menu fica fixo à esquerda,
+  a Visão geral e os gráficos do Mercado usam duas colunas e os indicadores ficam numa linha.
+- Na Lista de compras o selo de quantidade e o preço estimado ficam embaixo do nome (lado a lado o nome não cabia no celular).
+- Não testado em iPhone real: backup pela folha de compartilhamento, barra inferior com a área segura e a câmera do QR Code.
+
 ## Leitura do QR Code da NFC-e (13/10/2026)
 
 No modal "Importar NFC-e": **Ler QR Code com a câmera** (`getUserMedia`, câmera traseira, vídeo `playsinline` mudo) e **Usar uma
 foto do cupom** (`<input type=file accept=image/*>`, sem `capture`, para o iPhone oferecer câmera ou galeria). Testes com prefixo `qr:`.
 
 - Decodificador: `vendor/jsQR.js` (jsQR 1.4.0, Apache-2.0, licença em `vendor/jsQR-LICENSE.txt`), arquivo separado de ~250 KB
-  carregado só no primeiro uso e mantido no cache pelo service worker (v4). Não foi embutido no `index.html` porque são 10 mil linhas.
+  carregado só no primeiro uso e mantido no cache pelo service worker. Não foi embutido no `index.html` porque são 10 mil linhas.
 - O QR Code só traz o **link da consulta** (com a chave). Depois de ler, o app preenche o campo, analisa a chave e tenta buscar a
   nota (`autoFetchNfce`) **só se o link for `gov.br`**; a Sefaz normalmente bloqueia (CORS) e o usuário segue por "Abrir nota no
   portal" + colar o texto. Ou seja: o ganho é não digitar/colar o link; os itens continuam vindo do PDF ou do texto colado.
@@ -198,19 +221,14 @@ Todas têm teste com prefixo `rev2:` em `tests/e2e.js`.
   usa nenhum tipo de matching semântico.
 - O Comparador de Preços é uma calculadora avulsa — não salva nada e não usa o
   histórico do Mercado.
-- O arquivo final pesa ~1.7MB por causa do pdf.js embutido. Only baixa mais
-  devagar na primeira visita; depois disso o service worker cacheia.
+- O `index.html` pesa ~340 KB; os 1,8 MB de bibliotecas em `vendor/` só são baixados na instalação do service worker
+  (em segundo plano) ou no primeiro uso.
 
 ## Sugestões discutidas com o usuário mas ainda NÃO implementadas
 
 Se o usuário pedir para continuar dessas ideias (já validadas com ele antes):
 
-- **Exportar/importar backup dos dados** — hoje só existe a importação de dados
-  do Mercado (ver "Chaves de storage"). Falta um botão que baixe um `.json` com
-  tudo (compras, despesas, mercado) e a restauração dos três módulos. Foi
-  oferecido ao usuário como proteção extra contra o iOS eventualmente limpar o
-  `localStorage` de apps instalados na tela de início que ficam muito tempo sem
-  uso; ele ainda não confirmou se quer.
+- (Backup completo: implementado em 11/11/2026, ver "Revisão geral" abaixo.)
 
 ## Fluxo de trabalho / como validar antes de entregar
 

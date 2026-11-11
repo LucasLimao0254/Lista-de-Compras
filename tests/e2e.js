@@ -350,10 +350,13 @@ async function launch(port) {
     eq(await ev(`return document.fonts.check('500 16px Inter')`), true);
     eq(await ev(`return [...document.fonts].filter(f=>f.family.replace(/"/g,'')==='Inter'&&f.status==='loaded').length > 0`), true);
   });
-  await test('em tela larga (1280 px) o app vira uma coluna central de até 720 px com título maior', async () => {
-    await openPage({ width: 1280, height: 900 });
+  await test('tablet (800 px): coluna central de até 720 px com título maior; computador (1280 px): conteúdo de até 1040 px ao lado do menu fixo', async () => {
+    await openPage({ width: 800, height: 900 });
     const r = await ev(`const s=document.querySelector('.app-shell').getBoundingClientRect(); return [Math.round(s.width), Math.round(s.left), parseFloat(getComputedStyle(document.querySelector('.topbar-title h1')).fontSize)]`);
-    ok(r[0] <= 720 && r[1] > 100, 'coluna: ' + JSON.stringify(r)); eq(r[2], 30);
+    ok(r[0] <= 720 && r[1] > 30, 'coluna: ' + JSON.stringify(r)); eq(r[2], 30);
+    await openPage({ width: 1280, height: 900 });
+    const d = await ev(`const s=document.querySelector('.app-shell').getBoundingClientRect(); return [Math.round(s.width), Math.round(s.left), parseFloat(getComputedStyle(document.querySelector('.topbar-title h1')).fontSize)]`);
+    ok(d[0] <= 1040 && d[0] >= 900 && d[1] >= 260, 'computador: ' + JSON.stringify(d)); eq(d[2], 30);
   });
   await test('nenhum recurso externo foi requisitado (app 100% offline)', async () => { eq(externalRequests, []); });
 
@@ -1123,7 +1126,7 @@ async function launch(port) {
   });
   await test('bk: arquivo que não é backup (texto, JSON qualquer, arquivo de importação do Mercado) é recusado sem mudar nada', async () => {
     await openPage(); const before = await stored();
-    for (const bad of ['isto não é json', '{"items":[{"data":"2026-09-05","loja":"X","descricao":"Y","qtde":1,"valorUnit":2}]}', '{"app":"outro-app","data":{}}', '{"app":"controle-financeiro","data":{"cf-shopping-v1":"texto"}}', '[1,2,3]', 'null']) {
+    for (const bad of ['isto não é json', '{"items":[{"data":"2026-09-05","loja":"X","descricao":"Y","qtde":1,"valorUnit":2}]}', '{"app":"outro-app","data":{"cf-shopping-v1":{"items":[{"name":"De outro app"}]}}}', '{"data":{"cf-shopping-v1":{"items":[]}}}', '{"app":"controle-financeiro","data":{"cf-shopping-v1":"texto"}}', '[1,2,3]', 'null']) {
       await pickFile('bk-file', bad); const d = await dlg(); ok(d.aberto && !d.cancelar && /backup/i.test(d.msg), bad + ' -> ' + JSON.stringify(d)); await clickId('app-dialog-ok');
     }
     eq(await stored(), before);
@@ -1167,6 +1170,16 @@ async function launch(port) {
       document.getElementById('mk-nfceParseBtn').click(); await new Promise(r=>setTimeout(r,200));
       const out={ status: st.textContent, lib: typeof window.pdfjsLib, itens: [...document.querySelectorAll('#mk-nfcePreviewTable tr')].slice(1).map(tr=>[...tr.children].slice(0,2).map(td=>td.textContent).join('=')) }; document.getElementById('mk-nfceCancelBtn').click(); return out`);
     ok(/PDF lido \(1 página\)/.test(r.status), r.status); eq([r.lib, r.itens], ['object', ['ARROZ TIPO 1 5KG=1', 'FEIJAO CARIOCA 1KG=2']]);
+  });
+  await test('fl: nome do item tem espaço no celular mesmo com selo de quantidade e preço estimado (não quebra no meio da palavra)', async () => {
+    for (const [w, min] of [[390, 150], [320, 80]]) {
+      await withData({ 'cf-shopping-v1': { categories: ['Alimentos'], items: [{ id: 'a', name: 'Leite integral', category: 'Alimentos', checked: false, order: 0, qty: 3 }] },
+        'cf-market-v1': { items: [MK('2026-09-01', 'Loja', 'LEITE INTEGRAL 1L', 1, 8.64)], discounts: [], settings: { monthlyGoal: null } } }, { width: w });
+      await goto('compras');
+      const r = await ev(`const li=document.querySelector('#sc-sections li'), l=li.querySelector('.item-label'), p=li.querySelector('.item-price-estimate'); const range=document.createRange(); range.selectNodeContents(l);
+        return { largura: Math.round(l.getBoundingClientRect().width), linhas: range.getClientRects().length, preco: p.textContent, dentro: p.getBoundingClientRect().right <= li.getBoundingClientRect().right, rolagem: Math.max(0, document.documentElement.scrollWidth - innerWidth) }`);
+      ok(r.largura >= min && r.linhas <= 2 && r.dentro && r.rolagem === 0, w + ' px: ' + JSON.stringify(r)); eq(norm(r.preco), '~R$ 25,92');
+    }
   });
   await test('fl: barra inferior troca de tela com um toque, marca a tela atual e não cobre o conteúdo nem os avisos', async () => {
     await openPage();
@@ -1291,6 +1304,43 @@ async function launch(port) {
     eq(r.ordem, [true, true, true, true]); eq(r.legenda, ['Alimentação R$ 107,20', 'Limpeza R$ 11,60']);
     const n = r.ticks.map(Number), step = n[1] - n[0]; eq(n.length, 5); ok(n[0] === 0 && n.every((v, i) => v === i * step) && [5, 10, 20, 25, 50, 100, 200, 250, 500].includes(step), 'marcas do eixo: ' + r.ticks.join(','));
     ok(r.svgFont >= 11 && r.th >= 12 && r.foot >= 12, JSON.stringify([r.svgFont, r.th, r.foot]));
+  });
+
+  /* ================================================================ 8h. Estrutura e computador */
+  group('Estrutura: categorias (código compartilhado) e layout de computador');
+  await test('es: categorias em Compras e Despesas: criar, renomear (itens acompanham), nome repetido avisa, excluir move os itens', async () => {
+    await openPage();
+    for (const [view, p, key, item, de, para] of [['compras', 'sc', 'cf-shopping-v1', 'Arroz 5kg', 'Alimentos', 'Limpeza'], ['despesas', 'ex', 'cf-expenses-v1', 'Aluguel', 'Moradia', 'Contas']]) {
+      await goto(view);
+      const r = await ev(`const g=id=>document.getElementById(id), w=()=>new Promise(r=>setTimeout(r,180)); const st=()=>JSON.parse(localStorage.getItem('${key}')); const cat=()=>st().items.find(x=>x.name==='${item}').category;
+        const rows=()=>[...document.querySelectorAll('#${p}-categoriesList .cat-row')]; const row=n=>rows().find(x=>x.querySelector('.item-label') && x.querySelector('.item-label').textContent===n);
+        g('${p}-categoriesToggle').click(); await w(); const out={ aberto: g('${p}-categoriesPanel').classList.contains('open'), rotulo: g('${p}-categoriesToggleLabel').textContent, contagem: row('${de}').querySelector('.cat-count').textContent };
+        g('${p}-newCategoryInput').value='Nova'; g('${p}-addCategoryBtn').click(); await w(); out.criada=st().categories.includes('Nova'); out.campoLimpo=g('${p}-newCategoryInput').value;
+        g('${p}-newCategoryInput').value='nova'; g('${p}-addCategoryBtn').click(); await w(); out.repetida=g('${p}-status').textContent;
+        row('${de}').querySelector('.edit-btn').click(); await w(); const inp=document.querySelector('#${p}-categoriesList .cat-name-input'); out.foco=document.activeElement===inp; inp.value='${para}'; document.querySelector('#${p}-categoriesList .save-btn').click(); await w(); out.duplicada=g('${p}-status').textContent; out.aindaEditando=!!document.querySelector('#${p}-categoriesList .cat-name-input');
+        document.querySelector('#${p}-categoriesList .cat-name-input').value='Renomeada'; document.querySelector('#${p}-categoriesList .cat-name-input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); await w(); out.renomeada=[st().categories.includes('Renomeada'), cat()];
+        row('Renomeada').querySelector('.edit-btn').click(); await w(); document.querySelector('#${p}-categoriesList .cancel-btn').click(); await w(); out.cancelou=!document.querySelector('#${p}-categoriesList .cat-name-input');
+        row('Renomeada').querySelector('.delete-btn').click(); await w(); out.pergunta=g('app-dialog-message').textContent; g('app-dialog-ok').click(); await w(); out.excluida=[st().categories.includes('Renomeada'), st().categories.includes(cat())];
+        g('${p}-categoriesToggle').click(); await w(); out.fechado=!g('${p}-categoriesPanel').classList.contains('open'); return out`);
+      ok(r.aberto && r.rotulo === 'Fechar categorias' && /iten|item/.test(r.contagem) && r.criada && r.campoLimpo === '', view + ' criar: ' + JSON.stringify(r));
+      ok(/já existe/.test(r.repetida) && /já existe/.test(r.duplicada) && r.aindaEditando && r.foco, view + ' repetida: ' + JSON.stringify(r));
+      eq([r.renomeada, r.cancelou, r.excluida, r.fechado], [[true, 'Renomeada'], true, [false, true], true], view); ok(/Excluir "Renomeada"/.test(r.pergunta) && /movid/.test(r.pergunta), r.pergunta);
+    }
+  });
+  await test('es: no computador (1280 px) o menu fica fixo ao lado, sem barra inferior nem botão de menu, e as telas usam a largura', async () => {
+    await openPage({ width: 1280, height: 800 });
+    const r = await ev(`const g=id=>document.getElementById(id), vis=e=>getComputedStyle(e).display!=='none' && getComputedStyle(e).visibility!=='hidden' && e.getClientRects().length>0; const d=g('drawer').getBoundingClientRect(), s=document.querySelector('.app-shell').getBoundingClientRect();
+      const out={ menuFixo: vis(g('drawer')) && d.left===0 && d.width>=220, botaoMenu: vis(g('menuBtn')), barra: vis(g('bottomNav')), semSobrepor: s.left >= d.right, largura: Math.round(s.width) };
+      const blocos=[...document.querySelectorAll('#view-overview > div')].filter(vis).map(e=>e.getBoundingClientRect()); out.duasColunas = blocos.some((b,i)=>blocos.some((c,j)=>j>i && Math.abs(b.top-c.top)<2 && c.left>b.right-1));
+      const item=document.querySelector('#drawer [data-view="mercado"]'); item.focus(); item.click(); await new Promise(r=>setTimeout(r,200)); out.titulo=g('pageTitle').textContent; out.focoFica=document.activeElement===item; out.menuContinua=vis(g('drawer'));
+      const a=g('mk-donutWrap').closest('.card').getBoundingClientRect(), b=g('mk-lineWrap').closest('.card').getBoundingClientRect(); out.graficosLadoALado = Math.abs(a.top-b.top)<2 && b.left>=a.right; out.kpis=new Set([...document.querySelectorAll('.kpis .kpi')].map(k=>Math.round(k.getBoundingClientRect().top))).size;
+      const i=g('mk-searchBox'); out.rolagem=[]; for (const v of ['overview','compras','despesas','mercado','comparador','desejos']) { document.querySelector('#drawer [data-view="'+v+'"]').click(); await new Promise(r=>setTimeout(r,120)); out.rolagem.push(Math.max(0, document.documentElement.scrollWidth - innerWidth)); }   // negativo = só a barra de rolagem vertical
+      document.querySelector('#drawer [data-view="compras"]').click(); g('sc-newItemInput').value='Arroz 5kg'; g('sc-addBtn').click(); await new Promise(r=>setTimeout(r,150)); const t=g('sc-status').getBoundingClientRect(); out.avisoNaTela = t.left >= d.right && t.bottom <= innerHeight && t.height > 0;
+      return out`);
+    eq([r.menuFixo, r.botaoMenu, r.barra, r.semSobrepor, r.duasColunas, r.titulo, r.focoFica, r.menuContinua, r.graficosLadoALado, r.kpis, r.avisoNaTela], [true, false, false, true, true, 'Controle de mercado', true, true, true, 1, true]);
+    ok(r.largura >= 900, 'largura do conteúdo: ' + r.largura); eq(r.rolagem, [0, 0, 0, 0, 0, 0]);
+    await openPage();
+    eq(await ev(`const vis=e=>getComputedStyle(e).display!=='none' && getComputedStyle(e).visibility!=='hidden'; return [vis(document.getElementById('drawer')), vis(document.getElementById('menuBtn')), vis(document.getElementById('bottomNav'))]`), [false, true, true], 'no celular nada muda');
   });
 
   /* ================================================================ 9. PWA offline (por último: derruba o servidor) */

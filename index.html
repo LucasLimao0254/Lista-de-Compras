@@ -692,6 +692,31 @@
   .wl-reg input, .wl-reg .btn { min-height: 40px; }
   .wl-hist summary { padding: 11px 0; }
   .cp-remove, .mk-item-row .rm { width: 40px; }
+
+  .item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .item-text .item-label { flex: none; }
+  .item-sub { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .item-sub .item-price-estimate { font-size: 12px; }
+  .item-sub .item-qty { font-size: 12px; padding: 0 6px; }
+
+  .mk-charts { display: flex; flex-direction: column; gap: 20px; }
+
+  /* ================= Computador (960 px ou mais): menu fixo ao lado e telas em duas colunas ================= */
+  @media (min-width: 960px) {
+    body { padding-left: 260px; }
+    .drawer {
+      transform: none; visibility: visible; transition: none; box-shadow: none;
+      width: 260px; max-width: none; z-index: 100; border-right: 1px solid var(--line);
+    }
+    .drawer-overlay, .drawer-overlay.open { display: none; }
+    .menu-btn, .bottom-nav { display: none; }
+    .app-shell { max-width: 1040px; padding-bottom: 64px; }
+    .toast, .undo-toast { left: 276px; bottom: 24px; }
+    #view-overview.active { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+    #view-overview.active > :first-child, #ovUpcomingBlock { grid-column: 1 / -1; }
+    .kpis { grid-template-columns: repeat(4, 1fr); }
+    .mk-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  }
 </style>
 </head>
 <body>
@@ -941,6 +966,7 @@
 
     <div class="section-gap"></div>
 
+    <div class="mk-charts">
     <div class="card plain">
       <div class="card-head">
         <div><p class="card-title">Gastos por categoria</p><p class="card-sub">Parte do total, por categoria (sem descontos)</p></div>
@@ -959,6 +985,7 @@
       <div id="mk-lineWrap"></div>
       <div id="mk-lineTable" class="mk-table-scroll" style="display:none"></div>
       <div class="legend" id="mk-lineLegend"></div>
+    </div>
     </div>
 
     <div class="section-gap"></div>
@@ -1212,6 +1239,117 @@ window.cfCheckbox = function (box, label, checked, toggle, container, id) {
     const again = li && li.querySelector('.box'); if (again) again.focus();
   });
 };
+/* ---------- código compartilhado pelas listas (Lista de compras e Despesas) ----------
+   As duas telas tinham cópias idênticas do arrastar-e-soltar e do painel de categorias; ficam aqui uma vez só. */
+const CF_ICON = {
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>',
+};
+function cfIconButton(cls, label, svg, onClick) {
+  const b = document.createElement('button');
+  b.className = 'icon-btn ' + cls; b.setAttribute('aria-label', label); b.innerHTML = svg;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+// Arrastar e soltar itens entre as listas (<ul data-category>) de um contêiner. commit(id, categoria, posição) grava o resultado.
+window.cfDragList = function (sectionsId, commit) {
+  let st = null;
+  function onMove(e) {
+    if (!st) return;
+    st.ghost.style.top = (e.clientY - st.offsetY) + 'px';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    if (!under) return;
+    const targetLi = under.closest('li:not(.drag-placeholder)');
+    if (targetLi && !targetLi.classList.contains('drag-ghost') && targetLi.closest('#' + sectionsId)) {
+      const r = targetLi.getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) targetLi.parentElement.insertBefore(st.placeholder, targetLi);
+      else targetLi.parentElement.insertBefore(st.placeholder, targetLi.nextSibling);
+      return;
+    }
+    const targetUl = under.closest('#' + sectionsId + ' ul');
+    if (targetUl && st.placeholder.parentElement !== targetUl) targetUl.appendChild(st.placeholder);
+  }
+  async function onEnd() {
+    if (!st) return;
+    const cur = st;
+    const targetUl = cur.placeholder.parentElement;
+    const category = targetUl.dataset.category;
+    const children = Array.from(targetUl.children);
+    const before = children.slice(0, children.indexOf(cur.placeholder)).filter(function (el) { return el.dataset && el.dataset.id; }).length;
+    cur.ghost.remove(); cur.placeholder.remove();
+    document.body.classList.remove('dragging-active');
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onEnd);
+    document.removeEventListener('pointercancel', onEnd);
+    st = null;
+    await commit(cur.id, category, before);
+  }
+  return {
+    active: function () { return !!st; },
+    start: function (e, item, li) {
+      if (st) return;
+      e.preventDefault();
+      const rect = li.getBoundingClientRect();
+      const ghost = li.cloneNode(true);
+      ghost.classList.add('drag-ghost');
+      ghost.style.width = rect.width + 'px'; ghost.style.height = rect.height + 'px';
+      ghost.style.left = rect.left + 'px'; ghost.style.top = rect.top + 'px';
+      document.body.appendChild(ghost);
+      const placeholder = document.createElement('li');
+      placeholder.className = 'drag-placeholder';
+      placeholder.style.height = rect.height + 'px';
+      li.parentNode.insertBefore(placeholder, li);
+      li.remove();
+      st = { id: item.id, offsetY: e.clientY - rect.top, ghost: ghost, placeholder: placeholder };
+      document.body.classList.add('dragging-active');
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onEnd);
+      document.addEventListener('pointercancel', onEnd);
+    },
+  };
+};
+
+// Painel "Gerenciar categorias". o = { prefix, open, categories, editing, countOf(cat), onEdit(cat), onCancel(), onRename(cat, nome), onDelete(cat) }
+window.cfRenderCategoriesPanel = function (o) {
+  document.getElementById(o.prefix + '-categoriesPanel').classList.toggle('open', o.open);
+  document.getElementById(o.prefix + '-categoriesToggleLabel').textContent = o.open ? 'Fechar categorias' : 'Gerenciar categorias';
+  if (!o.open) return;
+  const list = document.getElementById(o.prefix + '-categoriesList');
+  list.innerHTML = '';
+  o.categories.forEach(function (cat) {
+    const row = document.createElement('div');
+    row.className = 'cat-row';
+    if (o.editing === cat) {
+      const input = document.createElement('input');
+      input.type = 'text'; input.className = 'cat-name-input'; input.value = cat; input.setAttribute('aria-label', 'Nome da categoria');
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') o.onRename(cat, input.value);
+        if (e.key === 'Escape') o.onCancel();
+      });
+      row.appendChild(input);
+      row.appendChild(cfIconButton('save-btn', 'Salvar categoria', CF_ICON.check, function () { o.onRename(cat, input.value); }));
+      row.appendChild(cfIconButton('cancel-btn', 'Cancelar', CF_ICON.x, o.onCancel));
+      setTimeout(function () { input.focus(); input.select(); }, 0);
+    } else {
+      const name = document.createElement('div');
+      name.className = 'item-label'; name.style.flex = '1'; name.textContent = cat;
+      row.appendChild(name);
+      const n = o.countOf(cat);
+      const count = document.createElement('div');
+      count.className = 'cat-count'; count.textContent = n + ' ' + (n === 1 ? 'item' : 'itens');
+      row.appendChild(count);
+      row.appendChild(cfIconButton('edit-btn', 'Editar categoria', CF_ICON.edit, function () { o.onEdit(cat); }));
+      const del = cfIconButton('delete-btn', 'Excluir categoria', CF_ICON.trash, function () { o.onDelete(cat); });
+      del.disabled = o.categories.length <= 1;
+      row.appendChild(del);
+    }
+    list.appendChild(row);
+  });
+};
+
 // Aviso com "Desfazer": a ação já foi feita; o botão chama undoFn. Some sozinho em 7 s; um aviso novo substitui o anterior.
 let undoTimer = null;
 window.cfUndo = function (message, undoFn) {
@@ -1392,20 +1530,26 @@ function buildLi(item) {
 
     setTimeout(() => { input.focus(); input.select(); }, 0);
   } else {
+    let qtyEl = null;   // o selo de quantidade vai na linha de baixo, junto do preço estimado
     if (itemQty(item) > 1) {
       const qtyTag = document.createElement('span');
       qtyTag.className = 'item-qty';
       qtyTag.textContent = itemQty(item) + '×';
       qtyTag.title = 'Quantidade: ' + itemQty(item);
       qtyTag.addEventListener('click', () => toggleItem(item.id));
-      li.appendChild(qtyTag);
+      qtyEl = qtyTag;
     }
 
     const label = document.createElement('div');
     label.className = 'item-label';
     label.textContent = item.name;
     label.addEventListener('click', () => toggleItem(item.id));
-    li.appendChild(label);
+    // nome e preço estimado empilhados: lado a lado, com os botões de 40 px, o nome ficava sem espaço no celular
+    const text = document.createElement('div'); text.className = 'item-text';
+    text.appendChild(label);
+    li.appendChild(text);
+    const meta = document.createElement('div'); meta.className = 'item-sub';
+    if (qtyEl) meta.appendChild(qtyEl);
 
     if (estimate) {
       const priceTag = document.createElement('span');
@@ -1413,8 +1557,9 @@ function buildLi(item) {
       const qty = itemQty(item);
       priceTag.textContent = '~' + fmtBRL(estimate.avgPrice * qty);
       priceTag.title = (qty > 1 ? fmtBRL(estimate.avgPrice) + ' por unidade × ' + qty + ' · média' : 'Média') + ' de ' + estimate.ocorrencias + ' compra(s) registrada(s) no Controle de Mercado';
-      li.appendChild(priceTag);
+      meta.appendChild(priceTag);
     }
+    if (meta.firstChild) text.appendChild(meta);
 
     const actions = document.createElement('div');
     actions.className = 'item-actions';
@@ -1537,64 +1682,12 @@ document.getElementById('sc-registerBtn').addEventListener('click', () => {
 });
 
 function renderCategoriesPanel() {
-  const panel = document.getElementById('sc-categoriesPanel');
-  panel.classList.toggle('open', categoriesPanelOpen);
-  document.getElementById('sc-categoriesToggleLabel').textContent = categoriesPanelOpen ? 'Fechar categorias' : 'Gerenciar categorias';
-  if (!categoriesPanelOpen) return;
-
-  const list = document.getElementById('sc-categoriesList');
-  list.innerHTML = '';
-
-  categories.forEach(cat => {
-    const count = items.filter(i => i.category === cat).length;
-    const row = document.createElement('div');
-    row.className = 'cat-row';
-
-    if (editingCategory === cat) {
-      const input = document.createElement('input');
-      input.type = 'text'; input.className = 'cat-name-input'; input.value = cat; input.setAttribute('aria-label', 'Nome da categoria');
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') renameCategory(cat, input.value);
-        if (e.key === 'Escape') { editingCategory = null; render(); }
-      });
-      row.appendChild(input);
-
-      const saveBtn = document.createElement('button');
-      saveBtn.className = 'icon-btn save-btn'; saveBtn.setAttribute('aria-label', 'Salvar categoria');
-      saveBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-      saveBtn.addEventListener('click', () => renameCategory(cat, input.value));
-      row.appendChild(saveBtn);
-
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'icon-btn cancel-btn'; cancelBtn.setAttribute('aria-label', 'Cancelar');
-      cancelBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-      cancelBtn.addEventListener('click', () => { editingCategory = null; render(); });
-      row.appendChild(cancelBtn);
-
-      setTimeout(() => { input.focus(); input.select(); }, 0);
-    } else {
-      const name = document.createElement('div');
-      name.className = 'item-label'; name.style.flex = '1'; name.textContent = cat;
-      row.appendChild(name);
-
-      const countEl = document.createElement('div');
-      countEl.className = 'cat-count'; countEl.textContent = count + ' ' + (count === 1 ? 'item' : 'itens');
-      row.appendChild(countEl);
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'icon-btn edit-btn'; editBtn.setAttribute('aria-label', 'Editar categoria');
-      editBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
-      editBtn.addEventListener('click', () => { editingCategory = cat; render(); });
-      row.appendChild(editBtn);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'icon-btn delete-btn'; deleteBtn.setAttribute('aria-label', 'Excluir categoria');
-      deleteBtn.disabled = categories.length <= 1;
-      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>';
-      deleteBtn.addEventListener('click', () => deleteCategory(cat));
-      row.appendChild(deleteBtn);
-    }
-    list.appendChild(row);
+  window.cfRenderCategoriesPanel({
+    prefix: 'sc', open: categoriesPanelOpen, categories: categories, editing: editingCategory,
+    countOf: cat => items.filter(i => i.category === cat).length,
+    onEdit: cat => { editingCategory = cat; render(); },
+    onCancel: () => { editingCategory = null; render(); },
+    onRename: renameCategory, onDelete: deleteCategory,
   });
 }
 
@@ -1705,59 +1798,8 @@ async function deleteItem(id) {
   });
 }
 
-let dragState = null;
-function startDrag(e, item, li) {
-  if (dragState) return;
-  e.preventDefault();
-  const rect = li.getBoundingClientRect();
-  const ghost = li.cloneNode(true);
-  ghost.classList.add('drag-ghost');
-  ghost.style.width = rect.width + 'px'; ghost.style.height = rect.height + 'px';
-  ghost.style.left = rect.left + 'px'; ghost.style.top = rect.top + 'px';
-  document.body.appendChild(ghost);
-  const placeholder = document.createElement('li');
-  placeholder.className = 'drag-placeholder';
-  placeholder.style.height = rect.height + 'px';
-  li.parentNode.insertBefore(placeholder, li);
-  li.remove();
-  dragState = { id: item.id, offsetY: e.clientY - rect.top, ghost, placeholder };
-  document.body.classList.add('dragging-active');
-  document.addEventListener('pointermove', onDragMove);
-  document.addEventListener('pointerup', onDragEnd);
-  document.addEventListener('pointercancel', onDragEnd);
-}
-function onDragMove(e) {
-  if (!dragState) return;
-  dragState.ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  if (!under) return;
-  const targetLi = under.closest('li:not(.drag-placeholder)');
-  if (targetLi && !targetLi.classList.contains('drag-ghost') && targetLi.closest('#sc-sections')) {
-    const targetRect = targetLi.getBoundingClientRect();
-    const midpoint = targetRect.top + targetRect.height / 2;
-    const parentUl = targetLi.parentElement;
-    if (e.clientY < midpoint) parentUl.insertBefore(dragState.placeholder, targetLi);
-    else parentUl.insertBefore(dragState.placeholder, targetLi.nextSibling);
-    return;
-  }
-  const targetUl = under.closest('#sc-sections ul');
-  if (targetUl && dragState.placeholder.parentElement !== targetUl) targetUl.appendChild(dragState.placeholder);
-}
-async function onDragEnd() {
-  if (!dragState) return;
-  const st = dragState;
-  const targetUl = st.placeholder.parentElement;
-  const newCategory = targetUl.dataset.category;
-  const children = Array.from(targetUl.children);
-  const idsBefore = children.slice(0, children.indexOf(st.placeholder)).filter(el => el.dataset && el.dataset.id).map(el => el.dataset.id);
-  st.ghost.remove(); st.placeholder.remove();
-  document.body.classList.remove('dragging-active');
-  document.removeEventListener('pointermove', onDragMove);
-  document.removeEventListener('pointerup', onDragEnd);
-  document.removeEventListener('pointercancel', onDragEnd);
-  dragState = null;
-  await commitReorder(st.id, newCategory, idsBefore.length);
-}
+const drag = window.cfDragList('sc-sections', (id, category, index) => commitReorder(id, category, index));
+function startDrag(e, item, li) { drag.start(e, item, li); }
 async function commitReorder(id, newCategory, newIndex) {
   const it = items.find(i => i.id === id);
   if (!it) return;
@@ -2248,64 +2290,12 @@ function populateCategorySelect() {
 }
 
 function renderCategoriesPanel() {
-  const panel = document.getElementById('ex-categoriesPanel');
-  panel.classList.toggle('open', categoriesPanelOpen);
-  document.getElementById('ex-categoriesToggleLabel').textContent = categoriesPanelOpen ? 'Fechar categorias' : 'Gerenciar categorias';
-  if (!categoriesPanelOpen) return;
-
-  const list = document.getElementById('ex-categoriesList');
-  list.innerHTML = '';
-
-  categories.forEach(cat => {
-    const catItems = items.filter(i => i.category === cat);
-    const row = document.createElement('div');
-    row.className = 'cat-row';
-
-    if (editingCategory === cat) {
-      const input = document.createElement('input');
-      input.type = 'text'; input.className = 'cat-name-input'; input.value = cat; input.setAttribute('aria-label', 'Nome da categoria');
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') renameCategory(cat, input.value);
-        if (e.key === 'Escape') { editingCategory = null; render(); }
-      });
-      row.appendChild(input);
-
-      const saveBtn = document.createElement('button');
-      saveBtn.className = 'icon-btn save-btn'; saveBtn.setAttribute('aria-label', 'Salvar categoria');
-      saveBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-      saveBtn.addEventListener('click', () => renameCategory(cat, input.value));
-      row.appendChild(saveBtn);
-
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'icon-btn cancel-btn'; cancelBtn.setAttribute('aria-label', 'Cancelar');
-      cancelBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-      cancelBtn.addEventListener('click', () => { editingCategory = null; render(); });
-      row.appendChild(cancelBtn);
-
-      setTimeout(() => { input.focus(); input.select(); }, 0);
-    } else {
-      const name = document.createElement('div');
-      name.className = 'item-label'; name.style.flex = '1'; name.textContent = cat;
-      row.appendChild(name);
-
-      const countEl = document.createElement('div');
-      countEl.className = 'cat-count'; countEl.textContent = catItems.length + ' ' + (catItems.length === 1 ? 'item' : 'itens');
-      row.appendChild(countEl);
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'icon-btn edit-btn'; editBtn.setAttribute('aria-label', 'Editar categoria');
-      editBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
-      editBtn.addEventListener('click', () => { editingCategory = cat; render(); });
-      row.appendChild(editBtn);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'icon-btn delete-btn'; deleteBtn.setAttribute('aria-label', 'Excluir categoria');
-      deleteBtn.disabled = categories.length <= 1;
-      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>';
-      deleteBtn.addEventListener('click', () => deleteCategory(cat));
-      row.appendChild(deleteBtn);
-    }
-    list.appendChild(row);
+  window.cfRenderCategoriesPanel({
+    prefix: 'ex', open: categoriesPanelOpen, categories: categories, editing: editingCategory,
+    countOf: cat => items.filter(i => i.category === cat).length,
+    onEdit: cat => { editingCategory = cat; render(); },
+    onCancel: () => { editingCategory = null; render(); },
+    onRename: renameCategory, onDelete: deleteCategory,
   });
 }
 
@@ -2429,59 +2419,8 @@ async function deleteItem(id) {
   });
 }
 
-let dragState = null;
-function startDrag(e, item, li) {
-  if (dragState) return;
-  e.preventDefault();
-  const rect = li.getBoundingClientRect();
-  const ghost = li.cloneNode(true);
-  ghost.classList.add('drag-ghost');
-  ghost.style.width = rect.width + 'px'; ghost.style.height = rect.height + 'px';
-  ghost.style.left = rect.left + 'px'; ghost.style.top = rect.top + 'px';
-  document.body.appendChild(ghost);
-  const placeholder = document.createElement('li');
-  placeholder.className = 'drag-placeholder';
-  placeholder.style.height = rect.height + 'px';
-  li.parentNode.insertBefore(placeholder, li);
-  li.remove();
-  dragState = { id: item.id, offsetY: e.clientY - rect.top, ghost, placeholder };
-  document.body.classList.add('dragging-active');
-  document.addEventListener('pointermove', onDragMove);
-  document.addEventListener('pointerup', onDragEnd);
-  document.addEventListener('pointercancel', onDragEnd);
-}
-function onDragMove(e) {
-  if (!dragState) return;
-  dragState.ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  if (!under) return;
-  const targetLi = under.closest('li:not(.drag-placeholder)');
-  if (targetLi && !targetLi.classList.contains('drag-ghost') && targetLi.closest('#ex-sections')) {
-    const targetRect = targetLi.getBoundingClientRect();
-    const midpoint = targetRect.top + targetRect.height / 2;
-    const parentUl = targetLi.parentElement;
-    if (e.clientY < midpoint) parentUl.insertBefore(dragState.placeholder, targetLi);
-    else parentUl.insertBefore(dragState.placeholder, targetLi.nextSibling);
-    return;
-  }
-  const targetUl = under.closest('#ex-sections ul');
-  if (targetUl && dragState.placeholder.parentElement !== targetUl) targetUl.appendChild(dragState.placeholder);
-}
-async function onDragEnd() {
-  if (!dragState) return;
-  const st = dragState;
-  const targetUl = st.placeholder.parentElement;
-  const newCategory = targetUl.dataset.category;
-  const children = Array.from(targetUl.children);
-  const idsBefore = children.slice(0, children.indexOf(st.placeholder)).filter(el => el.dataset && el.dataset.id).map(el => el.dataset.id);
-  st.ghost.remove(); st.placeholder.remove();
-  document.body.classList.remove('dragging-active');
-  document.removeEventListener('pointermove', onDragMove);
-  document.removeEventListener('pointerup', onDragEnd);
-  document.removeEventListener('pointercancel', onDragEnd);
-  dragState = null;
-  await commitReorder(st.id, newCategory, idsBefore.length);
-}
+const drag = window.cfDragList('ex-sections', (id, category, index) => commitReorder(id, category, index));
+function startDrag(e, item, li) { drag.start(e, item, li); }
 async function commitReorder(id, newCategory, newIndex) {
   const it = items.find(i => i.id === id);
   if (!it) return;
@@ -2670,7 +2609,7 @@ window.CF.expenses.overdue = function () {
   return { count: late.length, total: late.reduce((s, i) => s + (i.amount || 0), 0) };
 };
 // Redesenha quando o dia muda com o app aberto (ver refreshIfDayChanged); não apaga uma edição em andamento
-window.CF.expenses.refresh = function () { if (editingId === null && editingCategory === null && !dragState) render(); else updateSummary(); };
+window.CF.expenses.refresh = function () { if (editingId === null && editingCategory === null && !drag.active()) render(); else updateSummary(); };
 // Contas que vencem hoje ou nos próximos 3 dias (usado pelo sino de notificações)
 window.CF.expenses.dueSoon = function () {
   const soon = items.filter(i => dueSoonDays(i) !== null);
@@ -4838,9 +4777,10 @@ function openDrawer() {
   if (first) first.focus();
 }
 function closeDrawer() {
+  const wasOpen = drawer.classList.contains('open');   // no computador o menu é fixo (nunca "abre"): o foco fica onde está
   const hadFocus = drawer.contains(document.activeElement);
   drawer.classList.remove('open'); overlay.classList.remove('open');
-  if (hadFocus) menuBtn.focus();
+  if (hadFocus && wasOpen) menuBtn.focus();
 }
 
 function goToView(view) {

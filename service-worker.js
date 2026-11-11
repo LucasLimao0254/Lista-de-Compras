@@ -1,7 +1,6 @@
 // Service worker do Controle Financeiro.
-// O app é um único arquivo HTML autocontido (a biblioteca de leitura de PDF já
-// vem embutida nele) — então cachear esse arquivo cobre praticamente tudo que
-// o app precisa pra funcionar offline. Estratégia "cache first, com atualização
+// O app é um arquivo HTML mais três bibliotecas em vendor/ (leitor de PDF, seu worker e leitor de QR Code),
+// carregadas só quando usadas. Tudo isso entra no cache na instalação, então o app funciona offline. Estratégia "cache first, com atualização
 // em segundo plano": abre rápido usando a cópia salva, e atualiza o cache pra
 // próxima vez sempre que houver conexão.
 
