@@ -435,7 +435,7 @@
   .tooltip .tt-key { width: 9px; height: 3px; display: inline-block; border-radius: 1px; margin-right: 6px; vertical-align: middle; }
 
   table.dv { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  table.dv th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; padding: 6px; border-bottom: 1px solid var(--grid); }
+  table.dv th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding: 6px; border-bottom: 1px solid var(--grid); }
   table.dv td { padding: 7px 6px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
   table.dv tr:last-child td { border-bottom: none; }
   .num { text-align: right; }
@@ -571,6 +571,18 @@
   .ov-row:last-child { padding-bottom: 4px; }
   .ov-row-label { color: var(--color-neutral-400); }
   .ov-row-value { font-weight: 500; }
+  .ov-row-value.danger { color: var(--color-danger-300); }
+  .card.kpi .foot { font-size: 12px; }
+  .ov-up-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .ov-up-row + .ov-up-row, .ov-up-more { border-top: 1px solid var(--line); }
+  .ov-up-main { flex: 1; min-width: 0; }
+  .ov-up-name { font-size: 14px; overflow-wrap: anywhere; }
+  .ov-up-sub { font-size: 12px; color: var(--muted); }
+  .ov-up-sub.late { color: var(--color-danger-300); }
+  .ov-up-sub.soon { color: var(--color-warning-300); }
+  .ov-up-amount { flex: none; font-size: 14px; font-weight: 500; white-space: nowrap; }
+  .ov-up-row .btn { flex: none; }
+  .ov-up-more { padding: 8px 0 2px; font-size: 12px; color: var(--muted); }
 
   /* ================= Lista de desejos ================= */
   .wl-form { display: none; }
@@ -747,6 +759,11 @@
       </div>
     </div>
 
+    <div id="ovUpcomingBlock" hidden>
+      <div class="ov-block-title"><h4>Próximas contas</h4><a class="ov-link" href="#" data-goto="despesas">ver todas →</a></div>
+      <div class="ov-card" id="ovUpcoming"></div>
+    </div>
+
     <div>
       <div class="ov-block-title"><h4>Despesas fixas</h4><a class="ov-link" href="#" data-goto="despesas">abrir →</a></div>
       <div class="ov-card">
@@ -824,6 +841,7 @@
 
     <div id="sc-sections"></div>
 
+    <button class="btn btn-primary btn-block" id="sc-registerBtn" type="button" hidden></button>
     <button class="btn btn-secondary btn-block reset-btn" id="sc-resetBtn">Desmarcar tudo</button>
     <div class="status toast" id="sc-status" role="status" aria-live="polite"></div>
   </section>
@@ -917,6 +935,13 @@
     <div class="section-gap"></div>
 
     <div class="card plain">
+      <div class="card-head"><div><p class="card-title">Histórico de compras</p><p class="card-sub" id="mk-groupsSub"></p></div></div>
+      <div class="groups" id="mk-groups"></div>
+    </div>
+
+    <div class="section-gap"></div>
+
+    <div class="card plain">
       <div class="card-head">
         <div><p class="card-title">Gastos por categoria</p><p class="card-sub">Parte do total, por categoria (sem descontos)</p></div>
         <button class="link-btn" data-toggle-table="donut">ver tabela</button>
@@ -942,13 +967,6 @@
       <div class="card-head"><div><p class="card-title">Compare o preço de um item</p><p class="card-sub">Veja o valor pago em cada loja</p></div></div>
       <div class="pc-search"><input type="search" id="mk-pcSearch" aria-label="Item para comparar preço" placeholder='Ex: "arroz", "detergente"...'></div>
       <div id="mk-pcResult"></div>
-    </div>
-
-    <div class="section-gap"></div>
-
-    <div class="card plain">
-      <div class="card-head"><div><p class="card-title">Histórico de compras</p><p class="card-sub" id="mk-groupsSub"></p></div></div>
-      <div class="groups" id="mk-groups"></div>
     </div>
 
     <div class="status toast" id="mk-status" role="status" aria-live="polite"></div>
@@ -1503,7 +1521,20 @@ function updateProgress() {
   const pct = total ? Math.round((done / total) * 100) : 0;
   document.getElementById('sc-progressFill').style.width = pct + '%';
   document.getElementById('sc-progressLabel').textContent = done + ' de ' + total;
+  // com itens já marcados (comprados), oferece registrar a ida ao mercado com eles
+  const reg = document.getElementById('sc-registerBtn');
+  reg.hidden = done === 0;
+  reg.textContent = 'Registrar compra no Mercado (' + done + (done === 1 ? ' item)' : ' itens)');
 }
+document.getElementById('sc-registerBtn').addEventListener('click', () => {
+  const bought = items.filter(i => i.checked).map(i => {
+    const e = estimateOf(i);
+    return { descricao: i.name, qtde: itemQty(i), valorUnit: e ? Math.round(e.avgPrice * 100) / 100 : '' };
+  });
+  if (!bought.length) return;
+  window.CF.goToView('mercado');
+  window.CF.market.openPurchase(bought);
+});
 
 function renderCategoriesPanel() {
   const panel = document.getElementById('sc-categoriesPanel');
@@ -2606,6 +2637,33 @@ window.CF.expenses.summary = function () {
   const paid = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
   return { total: total, paid: paid, pending: total - paid, count: items.length };
 };
+// Próximas contas a pagar, para a Visão geral: atrasadas primeiro (as mais antigas antes), depois por proximidade do vencimento
+window.CF.expenses.upcoming = function (limit) {
+  const today = new Date().getDate();
+  const rows = items.filter(i => !i.paid && (i.dueDay || monthsUnpaid(i) > 1)).map(i => {
+    const months = monthsUnpaid(i);
+    let kind, label, rank;
+    if (months > 1) { kind = 'late'; label = 'Sem pagamento há ' + months + ' meses'; rank = -1000 - months; }
+    else if (overdueThisMonth(i)) { kind = 'late'; label = 'Venceu dia ' + i.dueDay; rank = -500 + dueDayThisMonth(i); }
+    else {
+      const d = dueDayThisMonth(i) - today;
+      kind = d <= 3 ? 'soon' : 'later'; rank = d;
+      label = d === 0 ? 'Vence hoje' : d === 1 ? 'Vence amanhã' : d <= 3 ? 'Vence em ' + d + ' dias' : 'Vence dia ' + i.dueDay;
+    }
+    return { id: i.id, name: i.name, amount: i.amount || 0, kind: kind, label: label, rank: rank };
+  }).sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name, 'pt-BR'));
+  return { rows: rows.slice(0, limit), more: Math.max(0, rows.length - limit) };
+};
+// Marca uma conta como paga a partir de outra tela (Visão geral), com "Desfazer"
+window.CF.expenses.pay = async function (id) {
+  const it = items.find(i => i.id === id);
+  if (!it || it.paid) return;
+  await toggleItem(id);
+  window.cfUndo('"' + it.name + '" marcada como paga', async () => {
+    if (it.paid && items.indexOf(it) >= 0) await toggleItem(id);
+    if (window.CF.refreshOverview) window.CF.refreshOverview();
+  });
+};
 // Contas atrasadas (venceram neste mês ou vêm de meses anteriores sem pagamento), para o sino e a Visão geral
 window.CF.expenses.overdue = function () {
   const late = items.filter(isOverdue);
@@ -2663,7 +2721,7 @@ const KEYWORDS = {
   'Itens Domésticos': ["PILHA","LAMPADA","VELA ","FOSFORO","GUARDANAPO","PAPEL ALUM","PAPEL FILME","VASSOURA","RODO ","PANELA","BRINQUEDO","DIE CAST","MELAMINA"],
 };
 function classify(desc){
-  const d = (desc||'').toUpperCase();
+  const d = (desc||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');   // sem acento: "Sabão em pó" casa "SABAO EM PO"
   for (const k of ['Medicamentos','Limpeza','Higiene','Itens Domésticos']){
     for (const kw of KEYWORDS[k]) if (window.cfHasKeyword(d, kw)) return k;
   }
@@ -2872,6 +2930,7 @@ function renderDonut(){
   legend.innerHTML = '';
   CAT_ORDER.forEach(cat=>{
     const val = totals[cat];
+    if (!(val > 0)) return;   // categoria sem gasto não ocupa espaço na legenda (a tabela continua mostrando todas)
     const item = document.createElement('div'); item.className='legend-item';
     const dot = document.createElement('span'); dot.className='legend-dot'; dot.style.background=cssColor(CAT_COLOR[cat]);
     const lbl = document.createElement('span'); lbl.textContent = cat + ' ';
@@ -2928,11 +2987,13 @@ function renderLine(){
     return;
   }
 
-  const W = 320, H = 220, padL = 40, padR = 12, padT = 14, padB = 26;
+  const W = 320, H = 220, padL = 40, padR = 16, padT = 14, padB = 28;
   const innerW = W-padL-padR, innerH = H-padT-padB;
 
   const maxVal = Math.max(10, ...trips.map(t=>t.total)) * 1.15;
-  const niceMax = Math.ceil(maxVal/50)*50;
+  const rawStep = maxVal/4, pow = Math.pow(10, Math.floor(Math.log10(rawStep))), frac = rawStep/pow;
+  const stepMult = frac<=1 ? 1 : frac<=2 ? 2 : (frac<=2.5 && pow>=10) ? 2.5 : frac<=5 ? 5 : 10;   // 2,5 só a partir de dezenas (25, 250…)
+  const niceMax = stepMult*pow*4;
 
   const xFor = (idx) => padL + (dates.length<=1 ? innerW/2 : idx/(dates.length-1) * innerW);
   const yFor = (v) => padT + innerH - (v/niceMax)*innerH;
@@ -2951,7 +3012,7 @@ function renderLine(){
     svg.appendChild(line);
     const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
     txt.setAttribute('x', padL-6); txt.setAttribute('y', y+3); txt.setAttribute('text-anchor','end');
-    txt.setAttribute('font-size','8'); txt.setAttribute('fill', cssColor('--text-muted'));
+    txt.setAttribute('font-size','11'); txt.setAttribute('fill', cssColor('--text-muted'));
     txt.textContent = v>=1000 ? (v/1000).toFixed(1).replace('.0','')+'k' : v.toFixed(0);
     svg.appendChild(txt);
   }
@@ -2960,7 +3021,7 @@ function renderLine(){
     if (idx % labelStep !== 0) return;
     const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
     txt.setAttribute('x', xFor(idx)); txt.setAttribute('y', H-8); txt.setAttribute('text-anchor','middle');
-    txt.setAttribute('font-size','8'); txt.setAttribute('fill', cssColor('--text-muted'));
+    txt.setAttribute('font-size','11'); txt.setAttribute('fill', cssColor('--text-muted'));
     txt.textContent = fmtDate(d);
     svg.appendChild(txt);
   });
@@ -4304,6 +4365,12 @@ document.getElementById('mk-importFile').addEventListener('change', function(e){
 
 window.CF.market.init = loadState;
 window.CF.market.count = function () { return state.items.length; };
+// Abre o formulário de compra já com itens (vindos da Lista de compras); fechar sem salvar pede confirmação
+window.CF.market.openPurchase = function (list) {
+  editingTrip = null;
+  openModal({ data: '', loja: '', cidade: '', items: list.map(i => ({ descricao: i.descricao, qtde: i.qtde, unidade: 'UN', valorUnit: i.valorUnit, categoria: classify(i.descricao) })) });
+  modalSnapshot = '';
+};
 let dataVersion = 0;   // muda a cada gravação/carga: quem depende do histórico (estimativas da Lista de compras) sabe quando redesenhar
 window.CF.market.version = function () { return dataVersion; };
 // Redesenha quando o dia muda com o app aberto ("Este mês", meta do mês…), sem apagar a meta sendo digitada
@@ -4808,6 +4875,32 @@ document.querySelectorAll('[data-goto]').forEach(function(el) {
 function fmtBRL(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 function setText(id, text) { document.getElementById(id).textContent = text; }
 
+// Próximas contas: até 5, cada uma com "Pagar" (um toque, com desfazer)
+function renderUpcoming() {
+  const block = document.getElementById('ovUpcomingBlock'), box = document.getElementById('ovUpcoming');
+  const up = window.CF.expenses.upcoming ? window.CF.expenses.upcoming(5) : { rows: [], more: 0 };
+  box.innerHTML = '';
+  block.hidden = up.rows.length === 0;
+  up.rows.forEach(function(r) {
+    const row = document.createElement('div'); row.className = 'ov-up-row';
+    const main = document.createElement('div'); main.className = 'ov-up-main';
+    const name = document.createElement('div'); name.className = 'ov-up-name'; name.textContent = r.name;
+    const sub = document.createElement('div'); sub.className = 'ov-up-sub' + (r.kind === 'later' ? '' : ' ' + r.kind); sub.textContent = r.label;
+    main.appendChild(name); main.appendChild(sub);
+    const amount = document.createElement('div'); amount.className = 'ov-up-amount'; amount.textContent = fmtBRL(r.amount);
+    const pay = document.createElement('button'); pay.type = 'button'; pay.className = 'btn btn-secondary'; pay.textContent = 'Pagar';
+    pay.setAttribute('aria-label', 'Marcar ' + r.name + ' como paga');
+    pay.addEventListener('click', async function() { pay.disabled = true; await window.CF.expenses.pay(r.id); renderOverview(); });
+    row.appendChild(main); row.appendChild(amount); row.appendChild(pay);
+    box.appendChild(row);
+  });
+  if (up.more > 0) {
+    const more = document.createElement('div'); more.className = 'ov-up-more';
+    more.textContent = 'e mais ' + up.more + (up.more === 1 ? ' conta' : ' contas') + ' a pagar';
+    box.appendChild(more);
+  }
+}
+
 function renderOverview() {
   if (!window.CF.expenses.summary || !window.CF.market.summary || !window.CF.shopping.summary) return;
 
@@ -4833,7 +4926,10 @@ function renderOverview() {
   setText('ovExpensesTotal', fmtBRL(ex.total));
   setText('ovExpensesPaid', fmtBRL(ex.paid));
   setText('ovExpensesPending', fmtBRL(ex.pending));
-  setText('ovExpensesOverdue', fmtBRL(window.CF.expenses.overdue ? window.CF.expenses.overdue().total : 0));
+  const lateTotal = window.CF.expenses.overdue ? window.CF.expenses.overdue().total : 0;
+  setText('ovExpensesOverdue', fmtBRL(lateTotal));
+  document.getElementById('ovExpensesOverdue').classList.toggle('danger', lateTotal > 0);
+  renderUpcoming();
 
   setText('ovWishCount', wl.count);
   setText('ovWishDrops', wl.drops);
@@ -4925,6 +5021,8 @@ document.addEventListener('keydown', function(e) {
 });
 
 window.CF.refreshAlerts = renderAlerts;
+window.CF.refreshOverview = renderOverview;
+window.CF.goToView = goToView;
 
 /* ---------- o dia mudou com o app aberto ----------
    No celular o app instalado costuma ser retomado, não recarregado: "vence amanhã", o sino e o "este mês" do mercado

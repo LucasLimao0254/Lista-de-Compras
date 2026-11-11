@@ -276,7 +276,8 @@ async function launch(port) {
   });
   await test('valores da legenda e totais do histórico não quebram em duas linhas', async () => {
     const r = await ev(`const lines=s=>[...document.querySelectorAll(s)].map(e=>{const r=document.createRange(); r.selectNodeContents(e); return r.getClientRects().length}); return { legend:lines('#mk-donutLegend .legend-item b'), totals:lines('.grp-total') }`);
-    ok(r.legend.length >= 3 && r.totals.length === 3, 'elementos não encontrados: ' + JSON.stringify(r));
+    ok(r.legend.length === 2 && r.totals.length === 3,   // legenda: só categorias com gasto (Alimentação e Limpeza)
+       'elementos não encontrados: ' + JSON.stringify(r));
     ok(r.legend.every(x => x === 1) && r.totals.every(x => x === 1), 'algum valor quebrou de linha (linhas de texto por valor): ' + JSON.stringify(r));
   });
   await test('campo "Compare o preço de um item" usa o estilo do tema (fundo escuro, borda do tema)', async () => {
@@ -1243,6 +1244,53 @@ async function launch(port) {
     await clickId('undo-btn'); eq((await names('cf-expenses-v1')).includes('Energia elétrica'), true); eq(norm(await txt('ex-totalValue')), 'R$ 2.994,80');
     await ev(`document.querySelector('#ex-sections li[data-id="e4"] .delete-btn').click(); return 1`); await sleep(8000);
     eq([(await undo()).visivel, (await names('cf-expenses-v1')).includes('Energia elétrica')], [false, false], 'sem desfazer, a exclusão vale');
+  });
+
+  /* ================================================================ 8g. Utilidade */
+  group('Utilidade: próximas contas, compras → mercado, Mercado reorganizado');
+  await test('ut: a Visão geral lista as próximas contas (atrasadas primeiro) e deixa pagar dali, com desfazer', async () => {
+    await openPage();
+    const rows = () => ev(`return { visivel: !document.getElementById('ovUpcomingBlock').hidden, linhas: [...document.querySelectorAll('#ovUpcoming .ov-up-row')].map(r=>r.querySelector('.ov-up-name').textContent+'|'+r.querySelector('.ov-up-sub').textContent+'|'+r.querySelector('.ov-up-sub').className.replace('ov-up-sub','').trim()+'|'+r.querySelector('.ov-up-amount').textContent.replace(/\\s+/g,' ')), mais: (document.querySelector('#ovUpcoming .ov-up-more')||{}).textContent||'' }`);
+    let r = await rows();
+    eq(r.linhas, ['Condomínio|Venceu dia 10|late|R$ 350,00', 'Energia elétrica|Venceu dia 13|late|R$ 240,00', 'Internet|Vence amanhã|soon|R$ 119,90', 'Água e esgoto|Vence em 2 dias|soon|R$ 95,00', 'Streaming|Vence em 3 dias|soon|R$ 39,90']);
+    ok(r.visivel && /mais 1 conta/.test(r.mais), JSON.stringify(r)); eq(await ev(`return document.getElementById('ovExpensesOverdue').classList.contains('danger')`), true);
+    const b = await ev(`const b=document.querySelector('#ovUpcoming .ov-up-row button'); const n=b.getAttribute('aria-label'); b.click(); await new Promise(r=>setTimeout(r,300)); return n`); ok(/Condomínio/.test(b) && /paga/.test(b), b);
+    r = await rows(); eq(r.linhas.map(x => x.split('|')[0]), ['Energia elétrica', 'Internet', 'Água e esgoto', 'Streaming', 'Seguro do carro']); eq(r.mais, '');
+    eq([norm(await txt('ovExpensesPaid')), norm(await txt('ovExpensesOverdue')), norm(await txt('ovDisbursedMonth'))], ['R$ 2.290,00', 'R$ 240,00', 'R$ 2.378,90']);
+    eq(await ev(`return JSON.parse(localStorage.getItem('cf-expenses-v1')).items.find(x=>x.id==='e2').paid`), true); ok(/1 conta atrasada/.test(norm(await ev(`return document.querySelector('#notifPanel .alert').textContent`))), 'sino atualizado');
+    ok(/Condomínio/.test(await txt('undo-msg')), 'aviso de desfazer'); await clickId('undo-btn');
+    r = await rows(); eq(r.linhas[0], 'Condomínio|Venceu dia 10|late|R$ 350,00'); eq(norm(await txt('ovExpensesPaid')), 'R$ 1.940,00');
+    await goto('despesas'); eq(await ev(`return document.querySelector('#ex-sections li[data-id="e2"]').classList.contains('paid')`), false, 'a tela de Despesas acompanha');
+    await openPage({ seed: false }); eq((await rows()).visivel, false, 'sem contas, o bloco não aparece');
+  });
+  await test('ut: "Registrar compra no Mercado" leva os itens marcados da lista para o formulário de compra, com quantidade e preço estimado', async () => {
+    await openPage(); await goto('compras');
+    const btn = () => ev(`const b=document.getElementById('sc-registerBtn'); return b.hidden ? null : b.textContent.trim()`);
+    eq(await btn(), 'Registrar compra no Mercado (2 itens)');
+    await ev(`document.querySelector('#sc-sections li[data-id="s5"] .box').click(); await new Promise(r=>setTimeout(r,200)); return 1`); eq(await btn(), 'Registrar compra no Mercado (1 item)');
+    await ev(`document.querySelector('#sc-sections li[data-id="s3"] .box').click(); await new Promise(r=>setTimeout(r,200)); return 1`); eq(await btn(), null, 'nada marcado: sem botão');
+    await ev(`for (const id of ['s3','s5']) { document.querySelector('#sc-sections li[data-id="'+id+'"] .box').click(); await new Promise(r=>setTimeout(r,150)); }
+      const li=document.querySelector('#sc-sections li[data-id="s3"]'); li.querySelector('.edit-btn').click(); await new Promise(r=>setTimeout(r,100)); document.querySelector('#sc-sections .qty-field').value='2'; document.querySelector('#sc-sections .save-btn').click(); await new Promise(r=>setTimeout(r,200));
+      document.getElementById('sc-registerBtn').click(); await new Promise(r=>setTimeout(r,300)); return 1`);
+    const m = await ev(`return { titulo: document.getElementById('pageTitle').textContent, aberto: document.getElementById('mk-overlay').classList.contains('open'), data: document.getElementById('mk-fData').value,
+      linhas: [...document.querySelectorAll('.mk-item-row')].map(r=>[r.querySelector('.mk-desc').value, r.querySelector('.mk-qtd').value, r.querySelector('.mk-vunit').value, r.querySelector('.mk-cat').value].join('|')) }`);
+    eq(m, { titulo: 'Controle de mercado', aberto: true, data: '2026-09-15', linhas: ['Café|2|18.5|Alimentação', 'Sabão em pó|1||Limpeza'] });
+    await clickId('mk-cancelBtn'); const d = await dlg(); ok(d.aberto && /Descartar/.test(d.msg), 'fechar sem salvar pergunta'); await clickId('app-dialog-cancel');
+    await ev(`document.getElementById('mk-fLoja').value='Loja da lista'; document.querySelectorAll('.mk-item-row')[1].querySelector('.mk-vunit').value='12.9'; document.getElementById('mk-saveBtn').click(); await new Promise(r=>setTimeout(r,400)); return 1`);
+    eq(await ev(`return JSON.parse(localStorage.getItem('cf-market-v1')).items.filter(x=>x.loja==='Loja da lista').map(x=>x.descricao+'='+x.valorTotal)`), ['Café=37', 'Sabão em pó=12.9']);
+  });
+  await test('ut: Mercado: histórico vem antes dos gráficos; legenda só com categorias que têm gasto; eixo com valores redondos; textos legíveis', async () => {
+    await openPage(); await goto('mercado');
+    const r = await ev(`const pos=(a,b)=>!!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); const g=id=>document.getElementById(id);
+      const ticks=[...document.querySelectorAll('#mk-lineWrap svg text')].filter(t=>t.getAttribute('text-anchor')==='end').map(t=>t.textContent);
+      document.querySelector('#mk-groups details').open=true; await new Promise(r=>setTimeout(r,100));
+      return { ordem: [pos(g('mk-dateChips'), g('mk-groups')), pos(g('mk-groups'), g('mk-donutWrap')), pos(g('mk-donutWrap'), g('mk-lineWrap')), pos(g('mk-lineWrap'), g('mk-pcSearch'))],
+        legenda: [...document.querySelectorAll('#mk-donutLegend .legend-item')].map(x=>x.textContent.replace(/\\s+/g,' ').trim()), ticks,
+        svgFont: Math.min(...[...document.querySelectorAll('#mk-lineWrap svg text')].map(t=>parseFloat(t.getAttribute('font-size')))),
+        th: parseFloat(getComputedStyle(document.querySelector('#mk-groups th')).fontSize), foot: parseFloat(getComputedStyle(document.querySelector('.kpi .foot')).fontSize) }`);
+    eq(r.ordem, [true, true, true, true]); eq(r.legenda, ['Alimentação R$ 107,20', 'Limpeza R$ 11,60']);
+    const n = r.ticks.map(Number), step = n[1] - n[0]; eq(n.length, 5); ok(n[0] === 0 && n.every((v, i) => v === i * step) && [5, 10, 20, 25, 50, 100, 200, 250, 500].includes(step), 'marcas do eixo: ' + r.ticks.join(','));
+    ok(r.svgFont >= 11 && r.th >= 12 && r.foot >= 12, JSON.stringify([r.svgFont, r.th, r.foot]));
   });
 
   /* ================================================================ 9. PWA offline (por último: derruba o servidor) */
