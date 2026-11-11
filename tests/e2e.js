@@ -1088,6 +1088,69 @@ async function launch(port) {
     eq(v, 'Casa nova');
   });
 
+  /* ================================================================ 8e. Backup */
+  group('Backup dos dados');
+  const NOW15 = Date.parse('2026-09-15T15:00:00Z'), DAY = 86400000;
+  const pickFile = (id, content) => ev(`const dt=new DataTransfer(); dt.items.add(new File([${JSON.stringify(content)}],'backup.json',{type:'application/json'})); const i=document.getElementById('${id}'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,350)); return 1`);
+  const stored = () => ev(`const o={}; ['cf-shopping-v1','cf-expenses-v1','cf-market-v1','cf-wishlist-v1'].forEach(k=>o[k]=localStorage.getItem(k)); return o`);
+  const bell = () => ev(`return [...document.querySelectorAll('#notifPanel .alert')].map(a=>a.textContent.replace(/\\s+/g,' ')).filter(t=>/backup/i.test(t))`);
+
+  await test('bk: "Fazer backup" baixa um arquivo com todos os dados e registra a data', async () => {
+    await openPage();
+    const r = await ev(`HTMLAnchorElement.prototype.click = function(){ window.__dl = { name: this.download, href: this.href }; };
+      document.getElementById('bk-export').click(); for (let i=0;i<40 && !window.__dl;i++) await new Promise(r=>setTimeout(r,100)); await new Promise(r=>setTimeout(r,200));
+      const body = JSON.parse(await (await fetch(window.__dl.href)).text()); const same = ['cf-shopping-v1','cf-expenses-v1','cf-market-v1','cf-wishlist-v1'].every(k => JSON.stringify(body.data[k]) === JSON.stringify(JSON.parse(localStorage.getItem(k))));
+      return { name: window.__dl.name, app: body.app, version: body.version, when: body.exportedAt, keys: Object.keys(body.data).sort(), same, meta: JSON.parse(localStorage.getItem('cf-meta-v1')), info: document.getElementById('bk-info').textContent }`);
+    eq([r.name, r.app, r.version, r.same], ['controle-financeiro-backup-2026-09-15.json', 'controle-financeiro', 1, true]);
+    eq(r.keys, ['cf-expenses-v1', 'cf-market-v1', 'cf-shopping-v1', 'cf-wishlist-v1']); eq(r.meta.lastBackup, NOW15); ok(/15\/09\/2026/.test(r.info), r.info);
+  });
+  await test('bk: restaurar pede confirmação com o resumo, substitui tudo (módulo ausente fica vazio) e avisa ao terminar', async () => {
+    await openPage(); const before = await stored();
+    const backup = JSON.stringify({ app: 'controle-financeiro', version: 1, exportedAt: '2026-08-01T12:00:00.000Z', data: {
+      'cf-shopping-v1': { categories: ['Alimentos'], items: [{ id: 'b1', name: 'Do backup', category: 'Alimentos', checked: false, order: 0, qty: 2 }] },
+      'cf-expenses-v1': { cycle: '2026-09', categories: ['Outros'], items: [{ id: 'x1', name: 'Conta do backup', amount: 50, dueDay: 20, notes: '', category: 'Outros', paid: false, order: 0 }] },
+      'cf-market-v1': { items: [{ data: '2026-09-01', loja: 'Loja B', cidade: '', descricao: 'ITEM B', qtde: 1, unidade: 'UN', valorUnit: 9, valorTotal: 9, categoria: 'Alimentação' }], discounts: [], settings: { monthlyGoal: 500 } } } });
+    await pickFile('bk-file', backup);
+    let d = await dlg(); ok(d.aberto && d.cancelar && /01\/08\/2026/.test(d.msg) && /1 item de compras/.test(d.msg) && /1 conta/.test(d.msg) && /SUBSTITU/.test(d.msg), JSON.stringify(d)); eq(d.ok, 'Restaurar');
+    await clickId('app-dialog-cancel'); eq(await stored(), before, 'cancelar não muda nada');
+    await pickFile('bk-file', backup); await ev(`document.getElementById('app-dialog-ok').click(); return 1`); await sleep(1500);
+    await waitFor("window.CF && window.CF.refreshAlerts && window.CF.wishlist && window.CF.wishlist.priceDrops"); await sleep(500);
+    d = await dlg(); ok(d.aberto && /Backup restaurado/.test(d.msg), JSON.stringify(d)); await clickId('app-dialog-ok');
+    const r = await ev(`return { compras: JSON.parse(localStorage.getItem('cf-shopping-v1')).items.map(x=>x.name), contas: JSON.parse(localStorage.getItem('cf-expenses-v1')).items.map(x=>x.name), mercado: JSON.parse(localStorage.getItem('cf-market-v1')).items.length,
+      desejos: (JSON.parse(localStorage.getItem('cf-wishlist-v1')).items||[]).length, tela: document.getElementById('ovShoppingTotal').textContent, wish: document.getElementById('ovWishCount').textContent }`);
+    eq(r, { compras: ['Do backup'], contas: ['Conta do backup'], mercado: 1, desejos: 0, tela: '1', wish: '0' });
+  });
+  await test('bk: arquivo que não é backup (texto, JSON qualquer, arquivo de importação do Mercado) é recusado sem mudar nada', async () => {
+    await openPage(); const before = await stored();
+    for (const bad of ['isto não é json', '{"items":[{"data":"2026-09-05","loja":"X","descricao":"Y","qtde":1,"valorUnit":2}]}', '{"app":"outro-app","data":{}}', '{"app":"controle-financeiro","data":{"cf-shopping-v1":"texto"}}', '[1,2,3]', 'null']) {
+      await pickFile('bk-file', bad); const d = await dlg(); ok(d.aberto && !d.cancelar && /backup/i.test(d.msg), bad + ' -> ' + JSON.stringify(d)); await clickId('app-dialog-ok');
+    }
+    eq(await stored(), before);
+  });
+  await test('bk: backup com lixo dentro não quebra o app (itens inválidos são descartados ao carregar)', async () => {
+    await openPage();
+    await pickFile('bk-file', JSON.stringify({ app: 'controle-financeiro', version: 1, data: {
+      'cf-shopping-v1': { categories: ['Alimentos', 5, null], items: [null, 7, { name: 5 }, { name: '  ' }, { name: 'Ok', category: 'Alimentos' }], history: 'x' },
+      'cf-expenses-v1': { categories: 'nada', items: [null, { name: 'Conta', amount: 'abc', dueDay: 99, paid: 'sim' }, { amount: 5 }] },
+      'cf-market-v1': { items: [null, { data: 'ontem', loja: 'L', descricao: 'D', qtde: 1, valorUnit: 1 }, { data: '2026-09-02', loja: 'Loja C', descricao: 'BOM', qtde: 2, valorUnit: 3 }], discounts: [null, { data: '2026-09-02', loja: 'Loja C', valor: 'x' }], settings: 'x' },
+      'cf-wishlist-v1': { items: [null, { name: 'Desejo', links: [null, { url: 5 }] }] } } }));
+    await ev(`document.getElementById('app-dialog-ok').click(); return 1`); await sleep(1500);
+    await waitFor("window.CF && window.CF.refreshAlerts && window.CF.wishlist && window.CF.wishlist.priceDrops"); await sleep(500); await clickId('app-dialog-ok');
+    for (const v of ['compras', 'despesas', 'mercado', 'desejos', 'overview']) await goto(v);
+    const r = await ev(`const g=k=>JSON.parse(localStorage.getItem(k)); return { compras: g('cf-shopping-v1').items.map(x=>x.name), cats: g('cf-shopping-v1').categories, contas: g('cf-expenses-v1').items.map(x=>[x.name,x.amount,x.dueDay,x.paid]), mercado: g('cf-market-v1').items.map(x=>x.descricao), desc: g('cf-market-v1').discounts.length, desejos: g('cf-wishlist-v1').items.map(x=>x.name) }`);
+    eq(r, { compras: ['Ok'], cats: ['Alimentos'], contas: [['Conta', 0, null, false]], mercado: ['BOM'], desc: 0, desejos: ['Desejo'] });
+  });
+  await test('bk: o sino lembra do backup depois de 7 dias sem nenhum ou 30 dias do último; sem dados ou com backup recente, não', async () => {
+    await withData({ 'cf-meta-v1': { firstSeen: NOW15 - 8 * DAY, lastBackup: null } });
+    let b = await bell(); eq(b.length, 1); ok(/ainda não fez/.test(b[0]), b[0]);
+    ok(/Nenhum backup/.test(await ev(`return document.getElementById('bk-info').textContent`)), 'texto do menu');
+    await withData({ 'cf-meta-v1': { firstSeen: NOW15 - 6 * DAY, lastBackup: null } }); eq(await bell(), []);
+    await withData({ 'cf-meta-v1': { firstSeen: NOW15 - 90 * DAY, lastBackup: NOW15 - 10 * DAY } }); eq(await bell(), []);
+    await withData({ 'cf-meta-v1': { firstSeen: NOW15 - 90 * DAY, lastBackup: NOW15 - 31 * DAY } }); b = await bell(); eq(b.length, 1); ok(/há 31 dias/.test(b[0]), b[0]);
+    await openPage({ seed: false }); await ev(`localStorage.setItem('cf-meta-v1', JSON.stringify({ firstSeen: ${NOW15 - 60 * DAY}, lastBackup: null })); return 1`); await reload(false);
+    eq(await bell(), [], 'sem dados não há o que guardar'); eq(await ev(`return document.getElementById('notifBtn').classList.contains('has-alerts')`), false);
+  });
+
   /* ================================================================ 9. PWA offline (por último: derruba o servidor) */
   group('PWA offline');
   await test('o service worker cacheia o app e ele abre e navega com o servidor DESLIGADO', async () => {

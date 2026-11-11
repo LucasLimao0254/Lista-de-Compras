@@ -235,6 +235,9 @@
     font-size: 15px; background: transparent; border: none; text-align: left; width: 100%;
   }
   .drawer-item svg { width: 18px; height: 18px; flex: 0 0 18px; stroke-width: 1.6; }
+  .drawer-data { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .drawer-data-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .drawer-data-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
   .drawer-item.active { background: rgba(145, 132, 217, 0.14); color: var(--accent); }
   .drawer-item:active { background: rgba(233, 233, 237, 0.07); }
 
@@ -720,6 +723,12 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c-2-3-7-2-7 2 0 3.5 4 6 7 9 3-3 7-5.5 7-9 0-4-5-5-7-2Z"/></svg>
     Lista de desejos
   </button>
+  <div class="drawer-data">
+    <div class="drawer-data-title">Seus dados</div>
+    <p class="drawer-data-note" id="bk-info"></p>
+    <button class="btn btn-secondary btn-block" id="bk-export" type="button">Fazer backup</button>
+    <label class="btn btn-secondary btn-block file-btn"><span>Restaurar backup</span><input type="file" id="bk-file" accept="application/json,.json"></label>
+  </div>
 </nav>
 
 <div class="app-shell">
@@ -1719,7 +1728,13 @@ async function loadState() {
     items = [];
     categories = DEFAULT_CATEGORIES.slice();
   }
+  // Dados inválidos (backup editado à mão, armazenamento corrompido) são descartados em vez de quebrar a tela
+  categories = categories.filter(c => typeof c === 'string' && c.trim());
+  if (!categories.length) categories = DEFAULT_CATEGORIES.slice();
+  items = items.filter(it => it && typeof it === 'object' && typeof it.name === 'string' && it.name.trim());
   items.forEach((it, idx) => {
+    if (typeof it.id !== 'string' || !it.id) it.id = makeId();
+    it.checked = it.checked === true;
     if (typeof it.order !== 'number') it.order = idx;
     if (!categories.includes(it.category)) it.category = categories[0];
   });
@@ -2414,11 +2429,20 @@ async function loadState() {
     items = [];
     categories = DEFAULT_CATEGORIES.slice();
   }
+  // Dados inválidos (backup editado à mão, armazenamento corrompido) são descartados em vez de quebrar a tela
+  categories = categories.filter(c => typeof c === 'string' && c.trim());
+  if (!categories.length) categories = DEFAULT_CATEGORIES.slice();
+  items = items.filter(it => it && typeof it === 'object' && typeof it.name === 'string' && it.name.trim());
   items.forEach((it, idx) => {
+    if (typeof it.id !== 'string' || !it.id) it.id = makeId();
     if (typeof it.order !== 'number') it.order = idx;
     if (!categories.includes(it.category)) it.category = categories[0];
     if (typeof it.amount !== 'number') it.amount = parseAmount(it.amount);
+    if (!isFinite(it.amount) || it.amount < 0) it.amount = 0;
     if (typeof it.paid !== 'boolean') it.paid = false;
+    if (!(Number.isInteger(it.dueDay) && it.dueDay >= 1 && it.dueDay <= 31)) it.dueDay = null;
+    if (!(Number.isInteger(it.unpaidMonths) && it.unpaidMonths >= 1)) delete it.unpaidMonths;
+    if (typeof it.notes !== 'string') it.notes = '';
   });
   statusEl.textContent = '';
   const rolled = applyMonthRollover();
@@ -2511,7 +2535,7 @@ window.CF.expenses.init = loadState;
 window.CF.expenses.summary = function () {
   const total = items.reduce((s, i) => s + (i.amount || 0), 0);
   const paid = items.filter(i => i.paid).reduce((s, i) => s + (i.amount || 0), 0);
-  return { total: total, paid: paid, pending: total - paid };
+  return { total: total, paid: paid, pending: total - paid, count: items.length };
 };
 // Contas atrasadas (venceram neste mês ou vêm de meses anteriores sem pagamento), para o sino e a Visão geral
 window.CF.expenses.overdue = function () {
@@ -4087,9 +4111,14 @@ async function loadState(){
     const result = await storageGet(STORAGE_KEY);
     if (result && result.value){
       const parsed = JSON.parse(result.value);
-      state.items = Array.isArray(parsed.items) ? parsed.items : [];
-      state.discounts = Array.isArray(parsed.discounts) ? parsed.discounts : [];
-      state.settings = Object.assign({ monthlyGoal: null }, parsed.settings || {});
+      // mesmo filtro da importação: linha inválida (backup editado à mão, dado antigo com defeito) é descartada
+      state.items = (Array.isArray(parsed.items) ? parsed.items : []).map(sanitizeImportedItem).filter(Boolean);
+      state.discounts = (Array.isArray(parsed.discounts) ? parsed.discounts : []).filter(d => d && typeof d.data === 'string' && typeof d.loja === 'string' && typeof d.valor === 'number' && isFinite(d.valor) && d.valor > 0)
+        .map(d => ({ data: d.data, loja: d.loja, valor: d.valor }));
+      const goal = parsed.settings && typeof parsed.settings === 'object' ? Number(parsed.settings.monthlyGoal) : NaN;
+      state.settings = { monthlyGoal: isFinite(goal) && goal > 0 ? goal : null };
+      // algo foi descartado: grava já limpo, para o backup seguinte não carregar o lixo adiante
+      if (state.items.length !== (Array.isArray(parsed.items) ? parsed.items.length : 0) || state.discounts.length !== (Array.isArray(parsed.discounts) ? parsed.discounts.length : 0)) await saveState();
     }
     // Sem nada salvo: começa vazio. Dados podem ser trazidos pelo botão "Importar dados".
   } catch(e) { }
@@ -4183,6 +4212,7 @@ document.getElementById('mk-importFile').addEventListener('change', function(e){
 });
 
 window.CF.market.init = loadState;
+window.CF.market.count = function () { return state.items.length; };
 // Redesenha quando o dia muda com o app aberto ("Este mês", meta do mês…), sem apagar a meta sendo digitada
 window.CF.market.refresh = function () { if (!goalEditing) renderAll(); };
 window.CF.market.summary = function () {
@@ -4329,6 +4359,7 @@ async function loadState() {
     if (result && result.value) {
       const parsed = JSON.parse(result.value);
       items = (Array.isArray(parsed.items) ? parsed.items : []).map(sanitizeItem).filter(Boolean);
+      if (items.length !== (Array.isArray(parsed.items) ? parsed.items.length : 0)) migrated = true;   // item inválido descartado: grava já limpo
     }
   } catch (e) { }
   // grava já convertido: senão a data dos registros migrados mudaria a cada abertura do app
@@ -4759,7 +4790,14 @@ function renderAlerts() {
     ]));
   }
 
-  const has = late.count > 0 || soon.count > 0 || drops.count > 0;
+  const bk = backupReminder();
+  if (bk) {
+    notifPanel.appendChild(alertEl('', WARN_SVG, [
+      { t: 'Faça um backup dos seus dados', bold: true }, { t: ' — ' + bk + '. Abra o menu e toque em "Fazer backup".' },
+    ]));
+  }
+
+  const has = late.count > 0 || soon.count > 0 || drops.count > 0 || !!bk;
   notifBtn.classList.toggle('has-alerts', has);
   if (!has) closeNotifPanel();
 }
@@ -4844,7 +4882,104 @@ document.addEventListener('keydown', function(e) {
   else if (!e.shiftKey && (a === last || !modal.contains(a))) { e.preventDefault(); first.focus(); }
 });
 
+/* ---------- backup: exportar e restaurar tudo ----------
+   Os dados vivem só no armazenamento do navegador, que o iPhone pode apagar em apps pouco usados. O backup é um arquivo
+   .json com as quatro chaves do app. Restaurar SUBSTITUI os dados do aparelho (módulo que não está no arquivo fica vazio)
+   e recarrega a página; o conteúdo passa pelos mesmos filtros de carregamento de cada módulo. */
+const BK_KEYS = ['cf-shopping-v1', 'cf-expenses-v1', 'cf-market-v1', 'cf-wishlist-v1'];
+const META_KEY = 'cf-meta-v1';
+const DAY_MS = 86400000;
+let meta = { firstSeen: null, lastBackup: null };
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+function fmtDay(t) { const d = new Date(t); return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear(); }
+async function saveMeta() { try { await storageSet(META_KEY, JSON.stringify(meta)); } catch (e) { /* sem armazenamento: vale só nesta sessão */ } }
+async function loadMeta() {
+  try {
+    const r = await storageGet(META_KEY);
+    if (r && r.value) { const p = JSON.parse(r.value) || {}; meta.firstSeen = Number(p.firstSeen) || null; meta.lastBackup = Number(p.lastBackup) || null; }
+  } catch (e) { /* começa do zero */ }
+  if (!meta.firstSeen) { meta.firstSeen = Date.now(); await saveMeta(); }
+  renderBackupInfo();
+}
+function renderBackupInfo() {
+  document.getElementById('bk-info').textContent = meta.lastBackup
+    ? 'Último backup: ' + fmtDay(meta.lastBackup) + '. Os dados ficam só neste aparelho.'
+    : 'Nenhum backup feito ainda. Os dados ficam só neste aparelho: guarde uma cópia de vez em quando.';
+}
+function hasAnyData() {
+  const sc = window.CF.shopping.summary(), ex = window.CF.expenses.summary(), wl = window.CF.wishlist.summary();
+  return sc.total > 0 || ex.count > 0 || window.CF.market.count() > 0 || wl.count > 0;
+}
+// Texto do lembrete para o sino, ou null: 7 dias de uso sem nenhum backup, ou 30 dias desde o último.
+function backupReminder() {
+  if (!meta.firstSeen || !hasAnyData()) return null;
+  if (meta.lastBackup) {
+    const days = Math.floor((Date.now() - meta.lastBackup) / DAY_MS);
+    return days >= 30 ? 'o último foi há ' + days + ' dias' : null;
+  }
+  return Math.floor((Date.now() - meta.firstSeen) / DAY_MS) >= 7 ? 'você ainda não fez nenhum' : null;
+}
+async function buildBackup() {
+  const data = {};
+  for (const k of BK_KEYS) {
+    const r = await storageGet(k);
+    if (r && r.value) { try { data[k] = JSON.parse(r.value); } catch (e) { /* chave ilegível fica de fora */ } }
+  }
+  return { app: 'controle-financeiro', version: 1, exportedAt: new Date().toISOString(), data: data };
+}
+async function exportBackup() {
+  const json = JSON.stringify(await buildBackup());
+  const t = new Date();
+  const name = 'controle-financeiro-backup-' + t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()) + '.json';
+  let done = false;
+  // No app instalado no iPhone o download comum não funciona bem: usa a folha de compartilhamento (Salvar em Arquivos).
+  if (navigator.standalone === true && navigator.canShare) {
+    try {
+      const file = new File([json], name, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Backup do Controle Financeiro' }); done = true; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }   // a pessoa cancelou: não conta como backup feito
+  }
+  if (!done) {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+  meta.lastBackup = Date.now();
+  await saveMeta(); renderBackupInfo(); renderAlerts();
+}
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+async function restoreBackup(file) {
+  let p;
+  try { p = JSON.parse(await file.text()); } catch (e) { p = null; }
+  const isObj = function (v) { return !!v && typeof v === 'object' && !Array.isArray(v); };
+  const keys = isObj(p) && p.app === 'controle-financeiro' && isObj(p.data) ? BK_KEYS.filter(function (k) { return isObj(p.data[k]); }) : [];
+  if (!keys.length) { await appAlert('Esse arquivo não é um backup do Controle Financeiro (ou está vazio). Nada foi alterado.'); return; }
+  const n = function (k) { const v = p.data[k]; return isObj(v) && Array.isArray(v.items) ? v.items.length : 0; };
+  const when = Date.parse(p.exportedAt);
+  const ok = await appConfirm('Restaurar o backup' + (isFinite(when) ? ' de ' + fmtDay(when) : '') + '? Ele tem ' +
+    plural(n('cf-shopping-v1'), 'item de compras', 'itens de compras') + ', ' + plural(n('cf-expenses-v1'), 'conta', 'contas') + ', ' +
+    plural(n('cf-market-v1'), 'item de mercado', 'itens de mercado') + ' e ' + plural(n('cf-wishlist-v1'), 'desejo', 'desejos') +
+    '. Os dados atuais deste aparelho serão SUBSTITUÍDOS.', { okLabel: 'Restaurar' });
+  if (!ok) return;
+  try {
+    for (const k of BK_KEYS) await storageSet(k, JSON.stringify(keys.indexOf(k) >= 0 ? p.data[k] : {}));
+  } catch (e) { await appAlert('Não foi possível gravar o backup neste aparelho (sem espaço?).'); return; }
+  meta.lastBackup = Date.now();   // o que está no aparelho agora é igual a um backup
+  await saveMeta();
+  try { sessionStorage.setItem('cf-restored', '1'); } catch (e) { /* só perde o aviso de conclusão */ }
+  location.reload();
+}
+document.getElementById('bk-export').addEventListener('click', exportBackup);
+document.getElementById('bk-file').addEventListener('change', function (e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (file) restoreBackup(file);
+});
+
 Promise.all([
+  loadMeta(),
   window.CF.shopping.init(),
   window.CF.expenses.init(),
   window.CF.market.init(),
@@ -4853,6 +4988,11 @@ Promise.all([
   renderOverview();
   renderAlerts();
   if (window.CF.shopping.refreshPriceEstimates) window.CF.shopping.refreshPriceEstimates();
+  // pede ao navegador para não apagar os dados sozinho quando faltar espaço (ele pode negar; por isso existe o backup)
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) { /* sem suporte */ }
+  let restored = false;
+  try { restored = sessionStorage.getItem('cf-restored') === '1'; sessionStorage.removeItem('cf-restored'); } catch (e) { restored = false; }
+  if (restored) appAlert('Backup restaurado. Confira seus dados.');
 });
 
 })();
