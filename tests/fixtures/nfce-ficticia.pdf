@@ -9,14 +9,16 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
 endobj
 4 0 obj
-<< /Length 260 >>
+<< /Length 317 >>
 stream
 BT /F1 12 Tf 50 780 Td 18 TL
 (SUPERMERCADO EXEMPLO LTDA) '
+(CNPJ: 12.345.678/0001-99) '
 (ARROZ TIPO 1 5KG \(Codigo: 7\)) '
 (Qtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90) '
 (FEIJAO CARIOCA 1KG \(Codigo: 8\)) '
 (Qtde.:2 UN: UN Vl. Unit.: 7,80 Vl. Total 15,60) '
+(Valor a pagar R$: 43,50) '
 (Emissao: 12/09/2026) '
 ET
 endstream
@@ -31,9 +33,9 @@ xref
 0000000058 00000 n 
 0000000115 00000 n 
 0000000241 00000 n 
-0000000552 00000 n 
+0000000609 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-622
+679
 %%EOF

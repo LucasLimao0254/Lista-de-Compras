@@ -128,7 +128,7 @@ texto demais no contexto. **Sempre** que for inspecionar ou editar o arquivo:
 - Overdue (vencido, vermelho) e due-soon (vence em até 3 dias, amarelo) em
   Despesas, com card de resumo no topo quando há algo vencendo em breve.
 - Editar e excluir uma compra inteira do histórico de Mercado (por data+loja).
-- Importador de NFC-e: upload de PDF (lido via pdf.js embutido) ou colar texto
+- Importador de NFC-e (refeito em 12/11/2026, ver "Importação de nota fiscal guiada"): QR Code, PDF ou texto
   copiado da página da Sefaz; extrai itens por regex (padrão
   `Qtde.: X UN Vl. Unit.: Y Vl. Total Z`); decodifica UF/data/CNPJ/número a
   partir da chave de acesso de 44 dígitos e valida o dígito verificador
@@ -177,6 +177,33 @@ Feita a pedido do usuário ("app fluido, útil, dinâmico e sem erros"), em cinc
   a Visão geral e os gráficos do Mercado usam duas colunas e os indicadores ficam numa linha.
 - Na Lista de compras o selo de quantidade e o preço estimado ficam embaixo do nome (lado a lado o nome não cabia no celular).
 - Não testado em iPhone real: backup pela folha de compartilhamento, barra inferior com a área segura e a câmera do QR Code.
+
+## Importação de nota fiscal guiada (12/11/2026)
+
+Refeita a pedido do usuário ("inserção de dados fácil e intuitiva"). O modal antigo mostrava tudo ao mesmo tempo (QR Code, PDF,
+campo de chave, "Analisar chave", texto colado, "Processar texto colado", prévia, "Usar estes dados") e ainda terminava no
+formulário de compra. Agora é um passo por vez (testes `nf:` e `qr:`):
+
+1. **Início**: quatro opções grandes — ler o QR Code, usar uma foto do QR Code, enviar o PDF, colar o texto ou o link.
+2. **Colar** (só quando preciso): se o portal não entrega a nota (o normal, por CORS), aparecem três passos numerados — abrir a
+   nota no site da Sefaz (link `gov.br`), copiar a página, voltar e tocar em "Colar o que copiei" (`navigator.clipboard.readText`;
+   sem essa API o botão some e fica o campo, que processa sozinho ao colar).
+3. **Conferir**: loja, data e cidade já preenchidas, total somado e comparado com o "Valor a pagar" da nota (confere / atenção),
+   desconto da nota e a lista dos itens. **Salvar compra** grava direto no histórico; **Editar itens** abre o formulário de compra
+   preenchido; **Outra nota** recomeça. Fechar com a nota na tela pede confirmação.
+
+- O que é extraído do texto: itens (`parseItemsFromNFCeText`), loja (`nfceStoreName`: linha antes de "CNPJ", sem LTDA/S.A.,
+  em "Título"), data (`nfceDateFromText`: a de "Emissão", no mês da chave de acesso quando conhecida), total e desconto
+  (`nfceTotalsFromText`). Nada é gravado sem passar pela conferência.
+- **Loja lembrada pelo CNPJ**: `cf-market-v1` ganhou `stores: { "<cnpj 14 dígitos>": { loja, cidade } }`, gravado ao salvar
+  uma nota. Na nota seguinte do mesmo CNPJ a loja vem com o nome que o usuário escolheu. Sem CNPJ lembrado, se o nome da nota
+  bate (sem diferenciar maiúsculas) com uma loja do histórico, usa a grafia do histórico.
+- Nota repetida: mesma data e loja com o mesmo total pergunta antes de salvar de novo.
+- O botão do topo do Mercado passou a se chamar "Nota fiscal".
+- O parágrafo abaixo sobre o QR Code continua valendo, com duas mudanças: não existe mais campo de link/chave nem
+  `autoFetchNfce` (agora `fetchNfce`, que devolve o texto ou `null`), e link fora do `gov.br` não é oferecido para abrir.
+- Não testado em iPhone real: "Colar o que copiei" (o Safari mostra um balão "Colar" a confirmar) e o retorno do site da Sefaz
+  para o app instalado.
 
 ## Leitura do QR Code da NFC-e (13/10/2026)
 

@@ -55,8 +55,14 @@ antigo) e sem fonte externa (a Inter está embutida em base64). Detalhes em `HAN
   que percorre todos os campos da página.
 - **QR Code da NFC-e** (`startScan`/`scanPhoto`): a câmera **tem de ser desligada** em todo caminho de saída (`stopScan`: Parar,
   fechar o modal, Esc, app em segundo plano, permissão que chega depois do fechamento — `scanToken`). O texto lido é dado, não
-  comando: só entra no campo se tiver chave de 44 dígitos e só é buscado sozinho se o link for `gov.br`. O decodificador é
+  comando: só vale se tiver chave de 44 dígitos, e o app só busca a página e só oferece o botão de abrir se o link for `gov.br`. O decodificador é
   `vendor/jsQR.js` (carregado sob demanda, listado em `ASSETS` do service worker); não use `BarcodeDetector` (não existe no iPhone).
+- **Importar nota fiscal** (`mk-nfceOverlay`) é um passo a passo: início → [câmera] → [colar o texto] → conferir → salvar
+  (`nfceSetStep`). Tudo que chega (QR Code, foto, PDF, texto colado, página buscada) passa por `nfceProcessText`: achou itens,
+  vai direto para a conferência. Não volte a criar botões intermediários ("Analisar chave", "Processar texto"). Toda leitura
+  assíncrona confere `scanToken` antes de mexer na tela (`stopScan()` invalida o que estiver em andamento). "Salvar compra"
+  grava direto; "Editar itens" leva ao formulário de compra. `state.stores` (CNPJ → loja/cidade, dentro de `cf-market-v1`)
+  lembra o nome que o usuário deu à loja.
 - **Backup** (menu → Seus dados): `BK_KEYS` lista as chaves exportadas/restauradas. **Chave de storage nova tem de entrar ali**, senão
   fica fora do backup. Restaurar substitui tudo e recarrega; por isso os carregadores de cada módulo descartam item inválido em vez de
   confiar no arquivo.
@@ -89,7 +95,7 @@ npx serve .
   Ao achar um bug, escreva o teste que falha primeiro e só então corrija.
   `TEST_INDEX=outro.html npm test` roda contra uma cópia (útil para conferir que o teste pega um defeito).
   `TEST_FILTER="^rev2:" node tests/e2e.js` roda só os testes cujo nome casar com a expressão regular.
-  Prefixos dos grupos mais novos: `qr:` (QR Code), `rev3:`, `bk:` (backup), `fl:` (fluidez), `ut:` (utilidade), `es:` (estrutura/computador).
+  Prefixos dos grupos mais novos: `qr:` (QR Code), `nf:` (importação de nota fiscal), `rev3:`, `bk:` (backup), `fl:` (fluidez), `ut:` (utilidade), `es:` (estrutura/computador).
 
 - Sintaxe: extrair os `<script>` sem atributos (`/<script>([\s\S]*?)<\/script>/g`) e rodar `node --check` em cada um.
 - IDs duplicados: `grep -oE 'id="[a-zA-Z0-9_-]+"' index.html | sort | uniq -c | sort -rn`.

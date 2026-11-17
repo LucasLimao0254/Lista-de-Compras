@@ -297,11 +297,23 @@ async function launch(port) {
     ok(r.open, 'modal não abriu'); ok(r.catW > 0.85, 'categoria deveria ocupar a linha (' + r.catW.toFixed(2) + ')'); ok(r.rmTop >= r.descTop - 2 && r.rmTop <= r.descBottom, '× fora da linha do nome'); ok(r.qtyTop > r.descBottom, 'campos abaixo do nome');
     await ev(`document.getElementById('mk-cancelBtn').click()`);
   });
-  await test('NFC-e: botão de PDF do tema mostra o nome do arquivo escolhido', async () => {
-    const r = await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); const dt=new DataTransfer(); dt.items.add(new File(['%PDF-1.4'],'nota-teste.pdf',{type:'application/pdf'})); const i=document.getElementById('mk-nfcePdfInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,250));
-      return { label: document.getElementById('mk-nfcePdfLabel').textContent, cls: i.parentElement.className, ph: document.getElementById('mk-nfceInput').placeholder }`);
-    eq(r.label, 'nota-teste.pdf'); ok(/btn/.test(r.cls), 'não é o botão do tema'); ok(r.ph.length < 45, 'placeholder longo demais (corta no celular): ' + r.ph);
-    await ev(`document.getElementById('mk-nfceCancelBtn').click()`);
+  // Importação de nota fiscal (passo a passo): utilitários usados por vários grupos
+  const NF_CLOSE = `document.getElementById('mk-nfceCancelBtn').click(); await new Promise(r=>setTimeout(r,150)); if (document.getElementById('app-dialog-overlay').classList.contains('open')) { document.getElementById('app-dialog-ok').click(); await new Promise(r=>setTimeout(r,150)); }`;
+  const NF_REVIEW = `(() => { const g=id=>document.getElementById(id); return { passo: ['Start','Paste','Review'].find(s=>!g('mk-nfceStep'+s).hidden) || 'Camera', loja: g('mk-nfceLoja').value, data: g('mk-nfceData').value, cidade: g('mk-nfceCidade').value, qtd: g('mk-nfceCount').textContent, total: g('mk-nfceTotal').textContent, confere: g('mk-nfceCheck').textContent, sub: g('mk-nfceReviewSub').textContent, msg: g('mk-nfceStatus').textContent,
+    itens: [...document.querySelectorAll('#mk-nfceItems li')].map(li=>[li.querySelector('.nfce-item-name').textContent, li.querySelector('.nfce-item-meta').textContent, li.querySelector('.nfce-item-total').textContent]) }; })()`;
+  // abre o modal, escolhe "Colar o texto", cola e continua; devolve o que a tela mostra
+  const nfPaste = (texto, abrir = true) => ev(`${abrir ? `document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150)); document.getElementById('mk-nfcePasteBtn').click(); await new Promise(r=>setTimeout(r,100));` : ''}
+    document.getElementById('mk-nfcePasteArea').value=${JSON.stringify(texto)}; document.getElementById('mk-nfceParseBtn').click(); await new Promise(r=>setTimeout(r,250)); return ${NF_REVIEW}`);
+  const NOTA = 'SUPERMERCADO EXEMPLO LTDA\nCNPJ: 12.345.678/0001-99\nAV. FICTICIA, 100, CENTRO, CIDADE EXEMPLO, SP\nConsulta realizada em 13/09/2026\nARROZ TIPO 1 5KG (Código: 7)\nQtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90\nFEIJAO CARIOCA 1KG (Código: 8)\nQtde.:2 UN: UN Vl. Unit.: 7,80 Vl. Total 15,60\nQtd. total de itens: 2\nValor total R$: 43,50\nDescontos R$: 3,50\nValor a pagar R$: 40,00\nEmissão: 12/09/2026 10:33:11\nChave de acesso: 3526 0912 3456 7800 0199 6500 1000 0012 3410 0001 2342';
+
+  await test('nota fiscal: o modal abre com quatro caminhos e um PDF que não é nota avisa sem sair do início', async () => {
+    const r = await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); const g=id=>document.getElementById(id);
+      const out={ opcoes: [...document.querySelectorAll('#mk-nfceStepStart .nfce-opt')].filter(e=>e.getClientRects().length).map(e=>e.querySelector('b').textContent), botao: g('mk-nfceBtn').textContent.trim(), titulo: g('mk-nfceTitle').textContent };
+      const dt=new DataTransfer(); dt.items.add(new File(['%PDF-1.4'],'nota-teste.pdf',{type:'application/pdf'})); const i=g('mk-nfcePdfInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
+      const st=g('mk-nfceStatus'); for (let k=0;k<100 && (!st.textContent || /Lendo/.test(st.textContent));k++) await new Promise(r=>setTimeout(r,150));
+      out.msg=st.textContent; out.noInicio=!g('mk-nfceStepStart').hidden && g('mk-nfceStepReview').hidden; ${NF_CLOSE} return out`);
+    eq(r.opcoes, ['Ler o QR Code do cupom', 'Usar uma foto do QR Code', 'Enviar o PDF da nota', 'Colar o texto ou o link da nota']); eq([r.botao, r.titulo], ['Nota fiscal', 'Importar nota fiscal']);
+    ok(/nota-teste\.pdf/.test(r.msg) && /Não consegui ler|Não encontrei/.test(r.msg), r.msg); eq(r.noInicio, true);
   });
   await test('histórico: cada ida ao mercado é um cartão com data · loja, cidade · itens e total', async () => {
     const r = await ev(`const g=document.querySelector('details.grp'); return [g.querySelector('.grp-title').textContent, g.querySelector('.grp-sub').textContent, g.querySelector('.grp-total').textContent]`);
@@ -428,13 +440,11 @@ async function launch(port) {
 
   await test('NFC-e: unidade PCT é mantida (não vira "PC"); KG, UN e milhar (2.499,00) corretos', async () => {
     await openPage(); await goto('mercado');
-    const texto = 'ARROZ TIPO 1 5KG (Código: 123)\nQtde.: 1 UN Vl. Unit.: 27,90 Vl. Total 27,90\nPRESUNTO FATIADO\nQtde.: 0,350 KG Vl. Unit.: 39,90 Vl. Total 13,97\nGELADEIRA DUPLEX\nQtde.: 1 UN Vl. Unit.: 2.499,00 Vl. Total 2.499,00\nBISCOITO RECHEADO\nQtde.: 3 PCT Vl. Unit.: 4,00 Vl. Total 12,00\n';
-    const rows = await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,120)); document.getElementById('mk-nfcePasteArea').value=${JSON.stringify(texto)}; document.getElementById('mk-nfceParseBtn').click(); await new Promise(r=>setTimeout(r,250));
-      const rows=[...document.querySelectorAll('#mk-nfcePreviewTable tr')].slice(1).map(r=>[...r.children].map(c=>c.textContent.trim())); document.getElementById('mk-nfceCancelBtn').click(); return rows`);
-    eq(rows.map(r => [r[0], r[2]]), [['ARROZ TIPO 1 5KG', 'UN'], ['PRESUNTO FATIADO', 'KG'], ['GELADEIRA DUPLEX', 'UN'], ['BISCOITO RECHEADO', 'PCT']]);
-    eq(norm(rows[2][4]), 'R$ 2.499,00');
+    const texto = 'Consulta realizada em 01/09/2026\nARROZ TIPO 1 5KG (Código: 123)\nQtde.: 1 UN Vl. Unit.: 27,90 Vl. Total 27,90\nPRESUNTO FATIADO\nQtde.: 0,350 KG Vl. Unit.: 39,90 Vl. Total 13,97\nGELADEIRA DUPLEX\nQtde.: 1 UN Vl. Unit.: 2.499,00 Vl. Total 2.499,00\nBISCOITO RECHEADO\nQtde.: 3 PCT Vl. Unit.: 4,00 Vl. Total 12,00\nEmissão: 05/09/2026 09:10:11\n';
+    const r = await nfPaste(texto); await ev(`${NF_CLOSE} return 1`);
+    eq(r.itens.map(i => [i[0], i[1].split(' × ')[0]]), [['ARROZ TIPO 1 5KG', '1 UN'], ['PRESUNTO FATIADO', '0,35 KG'], ['GELADEIRA DUPLEX', '1 UN'], ['BISCOITO RECHEADO', '3 PCT']]);
+    eq(norm(r.itens[2][2]), 'R$ 2.499,00'); eq(r.data, '2026-09-05', 'vale a data de emissão, não a primeira data do texto');
   });
-
   await test('arrastar e soltar (Lista de compras): mover "Arroz 5kg" de Alimentos para Limpeza persiste', async () => {
     await openPage(); await goto('compras');
     const rect = sel => ev(`const e=document.querySelector(${JSON.stringify(sel)}); const r=e.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}`);
@@ -746,59 +756,68 @@ async function launch(port) {
     };
   })();`;
   const CHAVE = '35260912345678000199650010000012341000012342';
+  const LINK = 'https://www.nfce.fazenda.sp.gov.br/qrcode?p=' + CHAVE;
   const openScan = async (pre = '') => { await openPage({ stubs: [pre, CAM_STUB] }); await goto('mercado'); await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); return 1`); };
-  const scanState = () => ev(`const g=id=>document.getElementById(id); return { url: g('mk-nfceInput').value, aberto: !g('mk-nfceScanner').hidden, msg: g('mk-nfceScanStatus').textContent, status: g('mk-nfceStatus').textContent, colado: g('mk-nfcePasteArea').value,
-    info: g('mk-nfceDecoded').style.display !== 'none' ? g('mk-nfceDecodedInfo').textContent : '', ligadas: window.__cam.tracks.filter(t=>t.readyState==='live').length, cameras: window.__cam.tracks.length, pedidos: window.__ext.calls }`);
+  const scanState = () => ev(`const g=id=>document.getElementById(id); const portal=!g('mk-nfcePortal').hidden;
+    return { passo: ['Start','Paste','Review'].find(s=>!g('mk-nfceStep'+s).hidden) || 'Camera', url: (portal && g('mk-nfceOpenPortalBtn').getAttribute('href')) || '', aberto: !g('mk-nfceScanner').hidden, msg: g('mk-nfceStatus').textContent, colado: g('mk-nfcePasteArea').value,
+      info: portal ? g('mk-nfceDecodedInfo').textContent : '', ligadas: window.__cam.tracks.filter(t=>t.readyState==='live').length, cameras: window.__cam.tracks.length, pedidos: window.__ext.calls,
+      itens: [...document.querySelectorAll('#mk-nfceItems .nfce-item-name')].map(e=>e.textContent), loja: g('mk-nfceLoja').value }`);
+  // espera a leitura terminar: saiu do passo inicial, ou ficou nele com uma mensagem final
+  const NF_WAIT = `{ const s=document.getElementById('mk-nfceStatus'), ini=document.getElementById('mk-nfceStepStart'); for (let k=0;k<100 && !ini.hidden && (!s.textContent || /Lendo|Buscando/.test(s.textContent));k++) await new Promise(r=>setTimeout(r,150)); await new Promise(r=>setTimeout(r,400)); }`;
   const photo = file => ev(`const b = ${file ? `await (await fetch(${JSON.stringify(file)})).blob()` : `await new Promise(r => { const c=document.createElement('canvas'); c.width=300; c.height=300; const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,300,300); x.fillStyle='#333'; x.fillRect(40,40,90,60); c.toBlob(r,'image/png'); })`};
     const dt=new DataTransfer(); dt.items.add(new File([b],'foto.png',{type:'image/png'})); const i=document.getElementById('mk-nfcePhotoInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
-    const s=document.getElementById('mk-nfceScanStatus'); for (let k=0;k<60 && (!s.textContent || /Lendo/.test(s.textContent));k++) await new Promise(r=>setTimeout(r,150)); await new Promise(r=>setTimeout(r,400)); return 1`);
+    ${NF_WAIT} return 1`);
 
-  await test('qr: a câmera lê o QR Code, preenche o link, analisa a chave, desliga a câmera e tenta buscar a nota', async () => {
+  await test('qr: a câmera lê o QR Code, desliga a câmera, tenta buscar a nota e, sem resposta do portal, mostra como copiar a nota', async () => {
     await openScan();
     await ev(`document.getElementById('mk-nfceScanBtn').click(); return 1`);
-    await waitFor(`document.getElementById('mk-nfceInput').value.length > 0`, 12000); await sleep(700);
+    await waitFor(`!document.getElementById('mk-nfceStepPaste').hidden`, 12000); await sleep(300);
     const s = await scanState();
-    ok(s.url.startsWith('https://www.nfce.fazenda.sp.gov.br/qrcode?p=' + CHAVE), 'link: ' + s.url);
+    ok(s.url.startsWith(LINK), 'link: ' + s.url);
     ok(/SP/.test(s.info) && /12\.345\.678\/0001-99/.test(s.info) && /1234/.test(s.info), 'chave analisada: ' + s.info);
-    eq([s.aberto, s.cameras, s.ligadas], [false, 1, 0], 'leitor fechado e câmera desligada');
-    eq(s.pedidos, [s.url], 'tenta buscar a nota uma vez'); ok(/Não foi possível buscar/.test(s.status), s.status); eq(s.colado, '');
+    eq([s.passo, s.aberto, s.cameras, s.ligadas], ['Paste', false, 1, 0], 'leitor fechado e câmera desligada');
+    eq(s.pedidos.length, 1, 'tenta buscar a nota uma vez'); ok(s.pedidos[0].startsWith(LINK), s.pedidos[0]); eq([s.colado, s.msg], ['', '']);
+    eq(await ev(`const a=document.getElementById('mk-nfceOpenPortalBtn'); return [a.target, a.rel, a.getClientRects().length>0, document.getElementById('mk-nfceHowto').children.length, document.getElementById('mk-nfcePasteLead').hidden]`), ['_blank', 'noopener noreferrer', true, 3, true], 'três passos numerados, com o botão de abrir a nota');
     const c = (await ev(`return window.__cam.calls`))[0]; eq([c.audio, c.video && c.video.facingMode && c.video.facingMode.ideal], [false, 'environment'], 'pede só vídeo, câmera traseira');
   });
-  await test('qr: quando o portal responde, o texto da nota já fica pronto para processar', async () => {
+  await test('qr: quando o portal responde, a nota vai direto para a conferência com loja, data, itens e total conferido', async () => {
     await openScan();
-    await ev(`window.__ext.reply = '<html><body><script>var x=1</scr'+'ipt><p>ARROZ TIPO 1 5KG (Código: 7)</p>\\n<p>Qtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90</p></body></html>'; document.getElementById('mk-nfceScanBtn').click(); return 1`);
-    await waitFor(`document.getElementById('mk-nfcePasteArea').value.length > 0`, 12000);
-    const s = await scanState(); ok(/ARROZ TIPO 1 5KG/.test(s.colado) && !/var x/.test(s.colado), s.colado); ok(/Consegui buscar/.test(s.status), s.status);
+    await ev(`window.__ext.reply = '<html><head><title>Consulta NFC-e</title></head><body><script>var x=1</scr'+'ipt><div class="txtTopo">SUPERMERCADO EXEMPLO LTDA</div><div>CNPJ: 12.345.678/0001-99</div><table><tr><td><span>ARROZ TIPO 1 5KG</span><span>(Código: 7)</span><br><span>Qtde.:1</span><span>UN: UN</span><span>Vl. Unit.: 27,90</span></td><td>Vl. Total 27,90</td></tr></table><div>Valor a pagar R$: 27,90</div><div>Emissão: 12/09/2026 10:33:11</div></body></html>'; document.getElementById('mk-nfceScanBtn').click(); return 1`);
+    await waitFor(`!document.getElementById('mk-nfceStepReview').hidden`, 12000);
+    const s = await scanState(); eq([s.passo, s.itens, s.loja, s.aberto, s.ligadas], ['Review', ['ARROZ TIPO 1 5KG'], 'Supermercado Exemplo', false, 0]);
+    const r = await ev(`return ${NF_REVIEW}`); eq([r.data, norm(r.total), r.msg], ['2026-09-12', 'R$ 27,90', '']); ok(/Confere/.test(r.confere), r.confere);
   });
   await test('qr: câmera negada ou inexistente explica o que fazer e oferece a foto; sem suporte, só a foto aparece', async () => {
     await openScan(`window.__camMode='denied';`); await ev(`document.getElementById('mk-nfceScanBtn').click(); await new Promise(r=>setTimeout(r,500)); return 1`);
-    let s = await scanState(); ok(/bloquead|permiss/i.test(s.msg) && /foto/i.test(s.msg), s.msg); eq([s.aberto, s.url], [false, '']);
+    let s = await scanState(); ok(/bloquead|permiss/i.test(s.msg) && /foto/i.test(s.msg), s.msg); eq([s.aberto, s.url, s.passo], [false, '', 'Start']);
     await openScan(`window.__camMode='nocam';`); await ev(`document.getElementById('mk-nfceScanBtn').click(); await new Promise(r=>setTimeout(r,500)); return 1`);
-    s = await scanState(); ok(/câmera/i.test(s.msg) && /foto/i.test(s.msg), s.msg); eq(s.aberto, false);
+    s = await scanState(); ok(/câmera/i.test(s.msg) && /foto/i.test(s.msg), s.msg); eq([s.aberto, s.passo], [false, 'Start']);
     await openScan(`window.__camMode='unsupported';`);
     eq(await ev(`const b=document.getElementById('mk-nfceScanBtn'), p=document.getElementById('mk-nfcePhotoInput'); return [b.hidden, getComputedStyle(b).display, !!p, p.accept, p.getAttribute('capture')]`), [true, 'none', true, 'image/*', null], 'sem capture: no iPhone dá para tirar a foto OU escolher uma da galeria');
   });
   await test('qr: foto do cupom: lê o QR Code; sem QR Code, QR que não é de nota e link fora do gov.br são tratados', async () => {
     await openScan(); await photo('tests/fixtures/qr-nfce.png');
-    let s = await scanState(); ok(s.url.includes(CHAVE) && /SP/.test(s.info), JSON.stringify(s)); eq(s.pedidos.length, 1); eq(s.cameras, 0, 'a foto não liga a câmera');
+    let s = await scanState(); ok(s.url.includes(CHAVE) && /SP/.test(s.info), JSON.stringify(s)); eq([s.passo, s.pedidos.length], ['Paste', 1]); eq(s.cameras, 0, 'a foto não liga a câmera');
     await openScan(); await photo(null);
-    s = await scanState(); ok(/Não encontrei/.test(s.msg), s.msg); eq(s.url, '');
+    s = await scanState(); ok(/Não encontrei/.test(s.msg), s.msg); eq([s.url, s.passo], ['', 'Start']);
     await openScan(); await photo('tests/fixtures/qr-texto.png');
-    s = await scanState(); ok(/não parece ser de uma NFC-e/.test(s.msg), s.msg); eq([s.url, s.pedidos.length], ['', 0]);
+    s = await scanState(); ok(/não parece ser de uma nota fiscal/.test(s.msg), s.msg); eq([s.url, s.pedidos.length, s.passo], ['', 0, 'Start']);
     await openScan(); await photo('tests/fixtures/qr-outro-site.png');
-    s = await scanState(); ok(s.url.startsWith('https://loja.exemplo.com/'), s.url); eq(s.pedidos, [], 'link fora do gov.br não é buscado sozinho'); ok(/gov\.br/.test(s.msg), s.msg); ok(/SP/.test(s.info), 'a chave ainda é analisada');
+    s = await scanState(); eq([s.url, s.pedidos, s.passo], ['', [], 'Paste'], 'link fora do gov.br não é buscado nem oferecido para abrir'); ok(/gov\.br/.test(s.msg) && /loja\.exemplo\.com/.test(s.msg), s.msg); ok(/SP/.test(s.info), 'a chave ainda é analisada');
+    eq(await ev(`return [document.getElementById('mk-nfceHowto').hidden, document.getElementById('mk-nfceOpenPortalBtn').hasAttribute('href')]`), [true, false]);
   });
-  await test('qr: "Parar", Cancelar, Esc e sair do app desligam a câmera; reabrir o modal começa limpo', async () => {
+  await test('qr: "Voltar", fechar, Esc e sair do app desligam a câmera; reabrir o modal começa limpo', async () => {
     const start = async () => { await ev(`document.getElementById('mk-nfceScanBtn').click(); return 1`); await waitFor(`!document.getElementById('mk-nfceScanner').hidden && window.__cam.tracks.some(t=>t.readyState==='live')`, 8000); };
-    const fechar = { parar: `document.getElementById('mk-nfceScanStop').click()`, cancelar: `document.getElementById('mk-nfceCancelBtn').click()`, esc: `document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`,
+    const fechar = { voltar: `document.getElementById('mk-nfceScanStop').click()`, fechar: `document.getElementById('mk-nfceCancelBtn').click()`, esc: `document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`,
       segundoPlano: `Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true}); document.dispatchEvent(new Event('visibilitychange')); delete document.visibilityState` };
     for (const [nome, js] of Object.entries(fechar)) {
       await openScan(`window.__camImage='';`); await start();
+      eq(await ev(`return [document.getElementById('mk-nfceStepStart').hidden, document.getElementById('mk-nfceScanStop').getClientRects().length>0]`), [true, true], 'com a câmera aberta só o leitor aparece');
       await ev(`${js}; await new Promise(r=>setTimeout(r,300)); return 1`);
-      const s = await scanState(); eq([s.aberto, s.ligadas], [false, 0], nome);
+      const s = await scanState(); eq([s.aberto, s.ligadas, s.passo], [false, 0, 'Start'], nome);
     }
     await ev(`document.getElementById('mk-nfceCancelBtn').click(); await new Promise(r=>setTimeout(r,150)); document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); return 1`);
-    const s = await scanState(); eq([s.aberto, s.msg, s.url], [false, '', '']);
+    const s = await scanState(); eq([s.aberto, s.msg, s.url, s.passo], [false, '', '', 'Start']);
   });
   await test('qr: foto com muito ruído (pouca luz), girada e em tamanho de celular ainda é lida', async () => {
     // ruído determinístico de ±60 por pixel sobre o QR Code girado 12°, numa "foto" de 1280×960 (sem suavizar, o leitor não acha o código)
@@ -808,7 +827,7 @@ async function launch(port) {
       return new Promise(r=>c.toBlob(r,'image/png')); })()`;
     await openScan();
     await ev(`const b = ${noisy}; const dt=new DataTransfer(); dt.items.add(new File([b],'foto.png',{type:'image/png'})); const i=document.getElementById('mk-nfcePhotoInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
-      const st=document.getElementById('mk-nfceScanStatus'); for (let k=0;k<100 && (!st.textContent || /Lendo/.test(st.textContent));k++) await new Promise(r=>setTimeout(r,150)); await new Promise(r=>setTimeout(r,300)); return 1`);
+      ${NF_WAIT} return 1`);
     const s = await scanState(); ok(s.url.includes(CHAVE), 'não leu a foto com ruído: ' + s.msg);
   });
   await test('qr: fechar o modal enquanto o aparelho ainda pede a permissão não deixa a câmera ligada depois', async () => {
@@ -822,15 +841,130 @@ async function launch(port) {
     await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,200)); document.getElementById('mk-nfceScanBtn').click(); return 1`);
     await waitFor(`!document.getElementById('mk-nfceScanner').hidden && document.getElementById('mk-nfceVideo').videoWidth > 0`, 8000);
     const r = await ev(`const v=document.getElementById('mk-nfceVideo'), b=v.getBoundingClientRect(), m=document.querySelector('#mk-nfceOverlay .modal').getBoundingClientRect();
-      return { dentro: b.left >= m.left - 0.5 && b.right <= m.right + 0.5 && b.width > 150, rolagem: Math.max(0, document.documentElement.scrollWidth - innerWidth), inline: v.playsInline, mudo: v.muted, status: document.getElementById('mk-nfceScanStatus').getAttribute('role') }`);
-    eq(r, { dentro: true, rolagem: 0, inline: true, mudo: true, status: 'status' });
+      return { dentro: b.left >= m.left - 0.5 && b.right <= m.right + 0.5 && b.width > 150, rolagem: Math.max(0, document.documentElement.scrollWidth - innerWidth), inline: v.playsInline, mudo: v.muted, status: document.getElementById('mk-nfceStatus').getAttribute('role'), dica: document.getElementById('mk-nfceStatus').textContent }`);
+    eq([r.dentro, r.rolagem, r.inline, r.mudo, r.status], [true, 0, true, true, 'status']); ok(/Aponte a câmera/.test(r.dica), r.dica);
     await ev(`document.getElementById('mk-nfceCancelBtn').click(); return 1`);
+  });
+
+  /* ================================================================ 8b2. Nota fiscal: conferir e salvar */
+  group('Nota fiscal: importação guiada (conferir e salvar)');
+  // troca dados salvos e recarrega (o SEED não sobrescreve o que já existe)
+  const withData = async (data, opts) => { await openPage(opts); await ev(`const d=${JSON.stringify(data)}; Object.keys(d).forEach(k=>localStorage.setItem(k, JSON.stringify(d[k]))); return 1`); await reload(false); };
+  const MK_VAZIO = { 'cf-market-v1': { items: [], discounts: [] } };
+  const mkSalvo = () => ev(`const st=JSON.parse(localStorage.getItem('cf-market-v1')); return { itens: st.items.map(i=>[i.data,i.loja,i.cidade,i.descricao,i.qtde,i.unidade,i.valorUnit,i.valorTotal]), desc: st.discounts, lojas: st.stores, nf: document.getElementById('mk-nfceOverlay').classList.contains('open'), form: document.getElementById('mk-overlay').classList.contains('open'), aviso: document.getElementById('mk-status').textContent, hist: document.getElementById('mk-groups').textContent }`);
+  await test('nf: colar o texto da nota leva direto à conferência (loja, data, desconto, total conferido) e "Salvar compra" grava sem passar pelo formulário', async () => {
+    await withData(MK_VAZIO); await goto('mercado');
+    const r = await nfPaste(NOTA);
+    eq([r.passo, r.loja, r.data, r.cidade, r.qtd, norm(r.total), r.msg], ['Review', 'Supermercado Exemplo', '2026-09-12', '', '2 itens · desconto de R$ 3,50', 'R$ 40,00', '']); ok(/Confere/.test(r.confere), r.confere); ok(/só salvar/.test(r.sub), r.sub);
+    eq(r.itens.map(i => [i[0], norm(i[1]), norm(i[2])]), [['ARROZ TIPO 1 5KG', '1 UN × R$ 27,90 · Alimentação', 'R$ 27,90'], ['FEIJAO CARIOCA 1KG', '2 UN × R$ 7,80 · Alimentação', 'R$ 15,60']]);
+    eq(await ev(`return document.getElementById('mk-nfceTitle').textContent`), 'Conferir a compra');
+    await ev(`document.getElementById('mk-nfceSaveBtn').click(); await new Promise(r=>setTimeout(r,400)); return 1`);
+    const s = await mkSalvo();
+    eq([s.nf, s.form], [false, false], 'salva e fecha, sem abrir o formulário');
+    eq(s.itens, [['2026-09-12', 'Supermercado Exemplo', '', 'ARROZ TIPO 1 5KG', 1, 'UN', 27.9, 27.9], ['2026-09-12', 'Supermercado Exemplo', '', 'FEIJAO CARIOCA 1KG', 2, 'UN', 7.8, 15.6]]);
+    eq(s.desc, [{ data: '2026-09-12', loja: 'Supermercado Exemplo', valor: 3.5 }]); eq(s.lojas, { '12345678000199': { loja: 'Supermercado Exemplo', cidade: '' } });
+    ok(/Compra salva: 2 itens/.test(s.aviso) && /40,00/.test(s.aviso), s.aviso); ok(/Supermercado Exemplo/.test(s.hist), 'a compra aparece no histórico');
+  });
+  await test('nf: o nome que você deu à loja é lembrado pelo CNPJ na nota seguinte, mesmo depois de recarregar', async () => {
+    await withData(MK_VAZIO); await goto('mercado'); await nfPaste(NOTA);
+    await ev(`document.getElementById('mk-nfceLoja').value='Exemplo da Esquina'; document.getElementById('mk-nfceCidade').value='Cidade Exemplo'; document.getElementById('mk-nfceSaveBtn').click(); await new Promise(r=>setTimeout(r,400)); return 1`);
+    await reload(false); await goto('mercado');
+    const r = await nfPaste(NOTA.replace('12/09/2026', '14/09/2026').replace('ARROZ TIPO 1 5KG', 'CAFE TORRADO 500G'));
+    eq([r.passo, r.loja, r.cidade, r.data], ['Review', 'Exemplo da Esquina', 'Cidade Exemplo', '2026-09-14']);
+    await ev(`${NF_CLOSE} return 1`);
+    // loja conhecida só pelo nome (sem CNPJ lembrado): usa a grafia que já está no histórico e sugere a cidade
+    await withData({ 'cf-market-v1': { items: [{ data: '2026-09-01', loja: 'SuperMercado EXEMPLO', cidade: 'Outra Cidade', descricao: 'Sal', qtde: 1, unidade: 'UN', valorUnit: 2, valorTotal: 2, categoria: 'Alimentos' }], discounts: [], stores: { 'abc': { loja: 'x' }, '11111111000111': { loja: '' } } } }); await goto('mercado');
+    const k = await nfPaste(NOTA); eq([k.loja, k.cidade], ['SuperMercado EXEMPLO', 'Outra Cidade']);
+    eq(await ev(`${NF_CLOSE} return 1`), 1);
+  });
+  await test('nf: total que não bate avisa; sem loja, sem data ou com data futura não salva; nota repetida pede confirmação', async () => {
+    await withData(MK_VAZIO); await goto('mercado');
+    const SEM = 'ARROZ TIPO 1 5KG\nQtde.: 1 UN Vl. Unit.: 27,90 Vl. Total 27,90\nValor a pagar R$: 99,00';
+    const m = await nfPaste(NOTA.replace('a pagar R$: 40,00', 'a pagar R$: 50,00')); ok(/não bateu/.test(m.sub) && /Atenção/.test(m.confere), m.sub + ' / ' + m.confere); await ev(`${NF_CLOSE} return 1`);
+    let r = await nfPaste(SEM);
+    ok(/Atenção/.test(r.confere) && /99,00/.test(r.confere) && /27,90/.test(r.confere) && /Editar itens/.test(r.confere), r.confere); eq([r.loja, r.data], ['', '']); ok(/Falta informar a loja e a data/.test(r.sub), r.sub);
+    const a = await ev(`const g=id=>document.getElementById(id), w=()=>new Promise(r=>setTimeout(r,250)), n=()=>JSON.parse(localStorage.getItem('cf-market-v1')).items.length, out={};
+      g('mk-nfceSaveBtn').click(); await w(); out.m1=g('mk-nfceStatus').textContent; out.foco1=document.activeElement.id;
+      g('mk-nfceLoja').value='Mercado X'; g('mk-nfceSaveBtn').click(); await w(); out.m2=g('mk-nfceStatus').textContent;
+      g('mk-nfceData').value='2026-09-16'; g('mk-nfceSaveBtn').click(); await w(); out.m3=g('mk-nfceStatus').textContent; out.antes=n(); out.aberto=g('mk-nfceOverlay').classList.contains('open');
+      g('mk-nfceData').value='2026-09-10'; g('mk-nfceSaveBtn').click(); await w(); await w(); out.depois=n(); out.fechou=!g('mk-nfceOverlay').classList.contains('open'); return out`);
+    ok(/loja/.test(a.m1) && /data/.test(a.m2) && /futuro/.test(a.m3), JSON.stringify(a)); eq([a.foco1, a.antes, a.aberto, a.depois, a.fechou], ['mk-nfceLoja', 0, true, 1, true]);
+    r = await nfPaste(SEM);
+    const b = await ev(`const g=id=>document.getElementById(id), w=()=>new Promise(r=>setTimeout(r,250)), n=()=>JSON.parse(localStorage.getItem('cf-market-v1')).items.length, out={};
+      g('mk-nfceLoja').value='Mercado X'; g('mk-nfceData').value='2026-09-10'; g('mk-nfceSaveBtn').click(); await w(); out.pergunta=g('app-dialog-message').textContent; g('app-dialog-cancel').click(); await w();
+      out.n1=n(); out.aindaNaConferencia=g('mk-nfceOverlay').classList.contains('open') && !g('mk-nfceStepReview').hidden;
+      g('mk-nfceSaveBtn').click(); await w(); g('app-dialog-ok').click(); await w(); await w(); out.n2=n(); out.fechou=!g('mk-nfceOverlay').classList.contains('open'); return out`);
+    ok(/mesma nota/.test(b.pergunta) && /Mercado X/.test(b.pergunta), b.pergunta); eq([b.n1, b.aindaNaConferencia, b.n2, b.fechou], [1, true, 2, true]);
+  });
+  await test('nf: "Editar itens" abre o formulário de compra já preenchido (loja, data, desconto e itens) e a loja fica lembrada ao salvar', async () => {
+    await withData(MK_VAZIO); await goto('mercado'); await nfPaste(NOTA);
+    const f = await ev(`const g=id=>document.getElementById(id); g('mk-nfceLoja').value='Exemplo'; g('mk-nfceUseBtn').click(); await new Promise(r=>setTimeout(r,250));
+      return { nf: g('mk-nfceOverlay').classList.contains('open'), form: g('mk-overlay').classList.contains('open'), loja: g('mk-fLoja').value, data: g('mk-fData').value, desc: g('mk-fDesconto').value, itens: [...document.querySelectorAll('#mk-itemRows .mk-item-row')].map(r=>[r.querySelector('.mk-desc').value, r.querySelector('.mk-qtd').value, r.querySelector('.mk-vunit').value]) }`);
+    eq(f, { nf: false, form: true, loja: 'Exemplo', data: '2026-09-12', desc: '3.5', itens: [['ARROZ TIPO 1 5KG', '1', '27.9'], ['FEIJAO CARIOCA 1KG', '2', '7.8']] });
+    await ev(`document.getElementById('mk-saveBtn').click(); await new Promise(r=>setTimeout(r,400)); return 1`);
+    const s = await mkSalvo(); eq([s.itens.length, s.form, s.lojas], [2, false, { '12345678000199': { loja: 'Exemplo', cidade: '' } }]);
+    // compra digitada à mão depois disso não herda o CNPJ da nota anterior
+    await ev(`const g=id=>document.getElementById(id); g('mk-addBtn').click(); await new Promise(r=>setTimeout(r,200)); g('mk-fLoja').value='Feira'; const row=document.querySelector('#mk-itemRows .mk-item-row'); row.querySelector('.mk-desc').value='Banana'; row.querySelector('.mk-vunit').value='5'; g('mk-saveBtn').click(); await new Promise(r=>setTimeout(r,400)); return 1`);
+    eq((await mkSalvo()).lojas, { '12345678000199': { loja: 'Exemplo', cidade: '' } });
+  });
+  await test('nf: fechar com a nota na tela pede confirmação; "Outra nota" e "Voltar" recomeçam do início', async () => {
+    await withData(MK_VAZIO); await goto('mercado');
+    // colar direto no campo já processa a nota, sem precisar tocar em "Continuar"
+    eq(await ev(`const g=id=>document.getElementById(id); g('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150)); g('mk-nfcePasteBtn').click(); const t=g('mk-nfcePasteArea'); t.value=${JSON.stringify(NOTA)}; t.dispatchEvent(new Event('paste',{bubbles:true})); await new Promise(r=>setTimeout(r,250)); return [!g('mk-nfceStepReview').hidden, g('mk-nfceItems').children.length]`), [true, 2]);
+    const r = await ev(`const g=id=>document.getElementById(id), w=()=>new Promise(r=>setTimeout(r,200)), ab=()=>g('mk-nfceOverlay').classList.contains('open'), dl=()=>g('app-dialog-overlay').classList.contains('open'), out={};
+      g('mk-nfceCancelBtn').click(); await w(); out.pergunta=g('app-dialog-message').textContent; g('app-dialog-cancel').click(); await w(); out.continua=ab() && !g('mk-nfceStepReview').hidden;
+      g('mk-nfceOverlay').dispatchEvent(new MouseEvent('click',{bubbles:true})); await w(); out.toqueForaPergunta=dl(); g('app-dialog-cancel').click(); await w();
+      g('mk-nfceRestartBtn').focus(); g('mk-nfceRestartBtn').click(); await w(); out.inicio=!g('mk-nfceStepStart').hidden && g('mk-nfceStepReview').hidden; out.focoNoModal=g('mk-nfceOverlay').contains(document.activeElement) && document.activeElement.getClientRects().length>0;
+      g('mk-nfcePasteBtn').click(); await w(); out.limpo=g('mk-nfcePasteArea').value; g('mk-nfcePasteArea').value='rascunho'; g('mk-nfceBackBtn').click(); await w(); out.voltou=!g('mk-nfceStepStart').hidden;
+      g('mk-nfceCancelBtn').click(); await w(); out.fechouSemPerguntar=!ab() && !dl(); out.nada=JSON.parse(localStorage.getItem('cf-market-v1')).items.length; return out`);
+    ok(/Descartar a nota lida/.test(r.pergunta), r.pergunta);
+    eq([r.continua, r.toqueForaPergunta, r.inicio, r.focoNoModal, r.limpo, r.voltou, r.fechouSemPerguntar, r.nada], [true, true, true, true, '', true, true, 0]);
+  });
+  await test('nf: colar o link da nota funciona como ler o QR Code; link repetido, chave sozinha e texto sem itens explicam o que falta; "Colar o que copiei" lê a área de transferência', async () => {
+    await openScan();
+    await ev(`document.getElementById('mk-nfcePasteBtn').click(); await new Promise(r=>setTimeout(r,100)); return 1`);
+    let r = await nfPaste(LINK + '|2|1|1|ABCDEF', false); await sleep(400);
+    let s = await scanState(); ok(s.url.startsWith(LINK), s.url); eq([s.passo, s.pedidos.length, s.colado], ['Paste', 1, '']); ok(/SP/.test(s.info), s.info);
+    r = await nfPaste(LINK + '|2|1|1|ABCDEF', false); ok(/link da nota, não o conteúdo/.test(r.msg), r.msg); eq((await scanState()).pedidos.length, 1, 'o mesmo link não é buscado de novo');
+    r = await nfPaste(CHAVE, false); ok(/chave de acesso sozinha/.test(r.msg), r.msg);
+    r = await nfPaste('um texto qualquer que não é uma nota', false); ok(/Não encontrei os itens/.test(r.msg) && /Selecionar tudo/.test(r.msg), r.msg); eq(r.passo, 'Paste');
+    r = await nfPaste('   ', false); ok(/Cole o texto da nota/.test(r.msg), r.msg);
+    const c = await ev(`navigator.clipboard.readText = async () => ${JSON.stringify(NOTA)}; const b=document.getElementById('mk-nfceClipBtn'); const vis=b.getClientRects().length>0; b.click(); await new Promise(r=>setTimeout(r,300)); return Object.assign(${NF_REVIEW}, { vis })`);
+    eq([c.vis, c.passo, c.loja, c.itens.length], [true, 'Review', 'Supermercado Exemplo', 2]);
+    await ev(`${NF_CLOSE} document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150)); document.getElementById('mk-nfcePasteBtn').click(); navigator.clipboard.readText = async () => { throw new DOMException('negado','NotAllowedError'); }; document.getElementById('mk-nfceClipBtn').click(); await new Promise(r=>setTimeout(r,250)); return 1`);
+    s = await scanState(); ok(/Não consegui ler o que foi copiado/.test(s.msg) && /Colar/.test(s.msg), s.msg); eq(s.passo, 'Paste');
+    // navegador sem acesso à área de transferência: o botão some e o passo a passo manda colar no campo
+    await openScan(`Object.defineProperty(navigator,'clipboard',{value:undefined,configurable:true});`); await ev(`document.getElementById('mk-nfcePasteBtn').click(); await new Promise(r=>setTimeout(r,100)); return 1`);
+    await nfPaste(LINK, false); await sleep(400);
+    const semClip = await ev(`return [document.getElementById('mk-nfceClipBtn').getClientRects().length, document.getElementById('mk-nfceHowto').children[2].textContent]`); eq(semClip[0], 0); ok(/campo abaixo/.test(semClip[1]) && !/botão/.test(semClip[1]), semClip[1]);
+  });
+  await test('nf: escolher outro caminho enquanto a nota do QR Code ainda está sendo buscada descarta a resposta atrasada', async () => {
+    await openScan();
+    await ev(`const html='<div>SUPERMERCADO EXEMPLO LTDA</div><div>CNPJ: 12.345.678/0001-99</div><p>ARROZ TIPO 1 5KG</p><p>Qtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90</p>'; const rf=window.fetch;
+      window.fetch=(u,i)=>/gov\\.br/.test(String(u)) ? new Promise(r=>setTimeout(()=>r(new Response(html,{status:200})),900)) : rf(u,i);
+      const b=await (await fetch('tests/fixtures/qr-nfce.png')).blob(); const dt=new DataTransfer(); dt.items.add(new File([b],'f.png',{type:'image/png'})); const i=document.getElementById('mk-nfcePhotoInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
+      const st=document.getElementById('mk-nfceStatus'); for (let k=0;k<80 && !/Buscando/.test(st.textContent);k++) await new Promise(r=>setTimeout(r,100)); window.__buscando=st.textContent;
+      document.getElementById('mk-nfcePasteBtn').click(); await new Promise(r=>setTimeout(r,1500)); return 1`);
+    const s = await scanState(); ok(/Buscando/.test(await ev(`return window.__buscando`)), 'a busca não chegou a começar'); eq([s.passo, s.url, s.itens, s.msg], ['Paste', '', [], '']);
+  });
+  await test('nf: em 320 px os três passos cabem na tela, sem rolagem lateral, com controles de pelo menos 40 px e nome longo de item sem estourar', async () => {
+    await openPage({ width: 320 }); await goto('mercado');
+    const MEDE = `(tag => { const m=document.querySelector('#mk-nfceOverlay .modal'), mr=m.getBoundingClientRect(), out=[];
+      if (document.documentElement.scrollWidth > innerWidth) out.push(tag+': rolagem lateral da página'); if (m.scrollWidth > m.clientWidth + 1) out.push(tag+': conteúdo mais largo que o modal');
+      [...m.querySelectorAll('button, a, select, input:not([type=file]), textarea, label.file-btn')].filter(e=>e.getClientRects().length>0).forEach(e=>{ const r=e.getBoundingClientRect(); if (r.height<39.5||r.width<39.5) out.push(tag+': '+(e.id||e.className)+' '+Math.round(r.width)+'x'+Math.round(r.height)); if (r.left<mr.left-0.5||r.right>mr.right+0.5) out.push(tag+': '+(e.id||e.className)+' fora do modal'); });
+      return out; })`;
+    const r = await ev(`const g=id=>document.getElementById(id), w=()=>new Promise(r=>setTimeout(r,200)); let out=[]; g('mk-nfceBtn').click(); await w(); out=out.concat(${MEDE}('início'));
+      g('mk-nfcePasteBtn').click(); await w(); out=out.concat(${MEDE}('colar'));
+      g('mk-nfcePasteArea').value=${JSON.stringify(NOTA.replace('ARROZ TIPO 1 5KG', 'BISCOITO RECHEADO CHOCOLATE COM AVELA EMBALAGEM FAMILIA PROMOCIONAL 400G'))}; g('mk-nfceParseBtn').click(); await w(); out=out.concat(${MEDE}('conferir'));
+      const li=document.querySelector('#mk-nfceItems li').getBoundingClientRect(), ul=g('mk-nfceItems').getBoundingClientRect(), s=g('mk-nfceSaveBtn').getBoundingClientRect();
+      return { out, itemCabe: li.right <= ul.right + 0.5, salvarVisivel: s.height > 0 && s.right <= innerWidth && s.width >= ul.width * 0.95, type: g('mk-nfceData').type, lista: g('mk-nfceLoja').getAttribute('list') }`);
+    eq(r.out, []); eq([r.itemCabe, r.salvarVisivel, r.type, r.lista], [true, true, 'date', 'mk-storeList']);
+    await ev(`${NF_CLOSE} return 1`);
   });
 
   /* ================================================================ 8c. Segunda revisão de código */
   group('Regressões: segunda revisão de código');
   // troca dados salvos e recarrega (o SEED não sobrescreve o que já existe)
-  const withData = async (data, opts) => { await openPage(opts); await ev(`const d=${JSON.stringify(data)}; Object.keys(d).forEach(k=>localStorage.setItem(k, JSON.stringify(d[k]))); return 1`); await reload(false); };
   const EX = (id, n, a, d, c, p) => ({ id, name: n, amount: a, dueDay: d, notes: '', category: c, paid: p, order: 0 });
   const MK = (d, l, desc, q, vu) => ({ data: d, loja: l, cidade: 'Cidade Exemplo', descricao: desc, qtde: q, unidade: 'UN', valorUnit: vu, valorTotal: Math.round(q * vu * 100) / 100, categoria: 'Alimentação' });
   const txt = id => ev(`return document.getElementById('${id}').textContent`);
@@ -844,10 +978,11 @@ async function launch(port) {
     const direto = await ev(`try { const r = await fetch('https://nfce.dominio-que-nao-existe.invalid/qrcode?p=1'); return 'respondeu ' + r.status + ' com ' + (await r.text()).slice(0,15) } catch (e) { return 'falhou' }`);
     eq(direto, 'falhou');
     await goto('mercado');
-    const ui = await ev(`document.getElementById('mk-nfceBtn').click(); const i=document.getElementById('mk-nfceInput'); i.value='https://nfce.dominio-que-nao-existe.invalid/qrcode?p=35260912345678000199650010000012341000012345'; document.getElementById('mk-nfceAnalyzeBtn').click(); await new Promise(r=>setTimeout(r,200));
-      document.getElementById('mk-nfceAutoFetchBtn').click(); for (let k=0;k<40 && /Tentando/.test(document.getElementById('mk-nfceStatus').textContent);k++) await new Promise(r=>setTimeout(r,250));
-      const r={ status: document.getElementById('mk-nfceStatus').textContent, colado: document.getElementById('mk-nfcePasteArea').value.length }; document.getElementById('mk-nfceCancelBtn').click(); return r`);
-    ok(/Não foi possível buscar/.test(ui.status), ui.status); eq(ui.colado, 0, 'nada deve ser colado');
+    const ui = await ev(`const rf=window.fetch; window.fetch=(u,i)=>rf(String(u).replace('www.nfce.fazenda.sp.gov.br','nfce.dominio-que-nao-existe.invalid'),i);
+      const g=id=>document.getElementById(id); g('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150)); g('mk-nfcePasteBtn').click(); g('mk-nfcePasteArea').value='https://www.nfce.fazenda.sp.gov.br/qrcode?p=35260912345678000199650010000012341000012342'; g('mk-nfceParseBtn').click();
+      for (let k=0;k<60 && g('mk-nfcePortal').hidden;k++) await new Promise(r=>setTimeout(r,250));
+      const r={ portal: !g('mk-nfcePortal').hidden, conferencia: !g('mk-nfceStepReview').hidden, itens: document.querySelectorAll('#mk-nfceItems li').length, status: g('mk-nfceStatus').textContent }; g('mk-nfceCancelBtn').click(); return r`);
+    eq([ui.portal, ui.conferencia, ui.itens], [true, false, 0], 'sem resposta do portal o app pede para copiar a nota, não mostra itens: ' + ui.status);
   });
 
   await test('rev2: editar quantidade/valor mantém a categoria escolhida à mão; renomear só reclassifica o que estava na categoria automática', async () => {
@@ -1033,13 +1168,11 @@ async function launch(port) {
 
   /* ================================================================ 8d. Terceira revisão de código */
   group('Regressões: terceira revisão de código');
-  await test('rev3: NFC-e colada numa linha só: cada item fica com o próprio nome (sem o cabeçalho da loja)', async () => {
+  await test('rev3: NFC-e colada numa linha só: cada item fica com o próprio nome (sem o cabeçalho da loja), e a loja e a data são reconhecidas', async () => {
     await openPage(); await goto('mercado');
-    const rows = await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150));
-      document.getElementById('mk-nfcePasteArea').value = 'SUPERMERCADO EXEMPLO LTDA CNPJ: 12.345.678/0001-99 ARROZ TIPO 1 5KG (Código: 7) Qtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90 FEIJAO CARIOCA 1KG (Código: 8) Qtde.:2 UN: UN Vl. Unit.: 7,80 Vl. Total 15,60 CAFE TORRADO 500G (Código: 9) Qtde.:1 UN: UN Vl. Unit.: 18,50 Vl. Total 18,50 Emissão: 12/09/2026';
-      document.getElementById('mk-nfceParseBtn').click(); await new Promise(r=>setTimeout(r,150));
-      const r=[...document.querySelectorAll('#mk-nfcePreviewTable tr')].slice(1).map(tr=>tr.children[0].textContent + '=' + tr.children[1].textContent); document.getElementById('mk-nfceCancelBtn').click(); return r`);
-    eq(rows, ['ARROZ TIPO 1 5KG=1', 'FEIJAO CARIOCA 1KG=2', 'CAFE TORRADO 500G=1']);
+    const r = await nfPaste('SUPERMERCADO EXEMPLO LTDA CNPJ: 12.345.678/0001-99 ARROZ TIPO 1 5KG (Código: 7) Qtde.:1 UN: UN Vl. Unit.: 27,90 Vl. Total 27,90 FEIJAO CARIOCA 1KG (Código: 8) Qtde.:2 UN: UN Vl. Unit.: 7,80 Vl. Total 15,60 CAFE TORRADO 500G (Código: 9) Qtde.:1 UN: UN Vl. Unit.: 18,50 Vl. Total 18,50 Emissão: 12/09/2026');
+    await ev(`${NF_CLOSE} return 1`);
+    eq(r.itens.map(i => i[0] + '=' + i[1].split(' ')[0]), ['ARROZ TIPO 1 5KG=1', 'FEIJAO CARIOCA 1KG=2', 'CAFE TORRADO 500G=1']); eq([r.loja, r.data], ['Supermercado Exemplo', '2026-09-12']);
   });
   await test('rev3: categoria automática casa palavra, não pedaço de palavra (compras, despesas e mercado)', async () => {
     await openPage({ seed: false }); await goto('compras');
@@ -1070,11 +1203,6 @@ async function launch(port) {
     await ev(`const b=await (await fetch('tests/fixtures/qr-nfce.png')).blob(); const dt=new DataTransfer(); dt.items.add(new File([b],'f.png',{type:'image/png'})); const i=document.getElementById('mk-nfcePhotoInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
       document.getElementById('mk-nfceCancelBtn').click(); await new Promise(r=>setTimeout(r,1500)); return 1`);
     const s = await scanState(); eq([s.url, s.pedidos.length], ['', 0]);
-  });
-  await test('rev3: ler o QR Code não apaga o texto da nota que já estava colado', async () => {
-    await openScan();
-    await ev(`window.__ext.reply='<p>OUTRA COISA</p>'; document.getElementById('mk-nfcePasteArea').value='meu texto colado'; return 1`); await photo('tests/fixtures/qr-nfce.png');
-    const s = await scanState(); eq([s.colado, s.pedidos.length], ['meu texto colado', 0]); ok(s.url.includes(CHAVE) && /texto que já estava colado/.test(s.msg), s.msg);
   });
   await test('rev3: dá para esquecer um nome das sugestões da Lista de compras', async () => {
     await withData({ 'cf-shopping-v1': { categories: ['Alimentos'], items: [], history: ['Detergente errrado', 'Detergente'] } }); await goto('compras');
@@ -1162,14 +1290,14 @@ async function launch(port) {
     eq(await ev(`return [typeof window.pdfjsLib, !!document.getElementById('pdfWorkerSource'), [...document.scripts].filter(s=>/pdf/.test(s.src)).length]`), ['undefined', false, 0]);
     const kb = Math.round(fs.statSync(INDEX).size / 1024); ok(kb < 450, 'index.html com ' + kb + ' KB');
   });
-  await test('fl: um PDF de verdade é lido (leitor carregado na hora) e os itens saem certos', async () => {
+  await test('fl: um PDF de verdade é lido (leitor carregado na hora) e vai direto para a conferência com os itens certos', async () => {
     await openPage(); await goto('mercado');
-    const r = await ev(`document.getElementById('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150)); const b=await (await fetch('tests/fixtures/nfce-ficticia.pdf')).blob();
-      const dt=new DataTransfer(); dt.items.add(new File([b],'nota.pdf',{type:'application/pdf'})); const i=document.getElementById('mk-nfcePdfInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
-      const st=document.getElementById('mk-nfcePdfStatus'); for (let k=0;k<100 && !/PDF lido|Não consegui/.test(st.textContent);k++) await new Promise(r=>setTimeout(r,150));
-      document.getElementById('mk-nfceParseBtn').click(); await new Promise(r=>setTimeout(r,200));
-      const out={ status: st.textContent, lib: typeof window.pdfjsLib, itens: [...document.querySelectorAll('#mk-nfcePreviewTable tr')].slice(1).map(tr=>[...tr.children].slice(0,2).map(td=>td.textContent).join('=')) }; document.getElementById('mk-nfceCancelBtn').click(); return out`);
-    ok(/PDF lido \(1 página\)/.test(r.status), r.status); eq([r.lib, r.itens], ['object', ['ARROZ TIPO 1 5KG=1', 'FEIJAO CARIOCA 1KG=2']]);
+    const r = await ev(`const g=id=>document.getElementById(id); g('mk-nfceBtn').click(); await new Promise(r=>setTimeout(r,150)); const b=await (await fetch('tests/fixtures/nfce-ficticia.pdf')).blob();
+      const dt=new DataTransfer(); dt.items.add(new File([b],'nota.pdf',{type:'application/pdf'})); const i=g('mk-nfcePdfInput'); i.files=dt.files; i.dispatchEvent(new Event('change',{bubbles:true}));
+      for (let k=0;k<100 && g('mk-nfceStepReview').hidden && !/Não/.test(g('mk-nfceStatus').textContent);k++) await new Promise(r=>setTimeout(r,150));
+      const out=Object.assign(${NF_REVIEW}, { lib: typeof window.pdfjsLib, vazio: i.value }); ${NF_CLOSE} return out`);
+    eq([r.lib, r.passo, r.msg, r.vazio], ['object', 'Review', '', '']); eq(r.itens.map(i => i[0] + '=' + i[1].split(' ')[0]), ['ARROZ TIPO 1 5KG=1', 'FEIJAO CARIOCA 1KG=2']);
+    eq([r.loja, r.data, norm(r.total)], ['Supermercado Exemplo', '2026-09-12', 'R$ 43,50']); ok(/Confere/.test(r.confere), r.confere);
   });
   await test('fl: nome do item tem espaço no celular mesmo com selo de quantidade e preço estimado (não quebra no meio da palavra)', async () => {
     for (const [w, min] of [[390, 150], [320, 80]]) {
